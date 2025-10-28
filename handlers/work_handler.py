@@ -31,31 +31,34 @@ class WorkHandler:
         
         try:
             # Парсим данные
-            stats = await self.parser.parse_statistics(date)
+            stats = await self.parser.parse_reports(report_date=date)
             
-            if not stats:
+            if not stats or not stats.get('success'):
                 await update.message.reply_text(
-                    "❌ Не удалось получить статистику. Проверь доступность сайта."
+                    f"❌ Не удалось получить статистику. {stats.get('error', 'Проверь доступность сайта.')}"
                 )
                 return
             
             # Сохраняем в БД
             await self.db.save_work_stats(
                 user_id=user.id,
-                date=date or datetime.now().strftime('%Y-%m-%d'),
-                total_records=stats['total_records'],
+                date=stats['date'],
+                total_records=stats['workers_count'],
                 total_sfs=stats['total_sfs'],
                 total_sch=stats['total_sch'],
                 workers_data=stats['workers']
             )
             
             # Формируем красивый ответ
+            scam_emoji = "🚨" if stats['scam_detected'] > 0 else "✅"
             message = f"""📊 **Статистика работы**
+📅 Дата: {stats['date']}
+👥 Команда: {stats['team']}
 
-📝 Всего записей: **{stats['total_records']}**
+📝 Работников: **{stats['workers_count']}**
 ✅ Успешных (SFS): **{stats['total_sfs']}**
 📋 Проверено (SCH): **{stats['total_sch']}**
-👥 Активных сотрудников: **{len(stats['workers'])}**
+{scam_emoji} Скам: **{stats['scam_detected']}** работник(ов)
 
 **Топ-5 работников по SFS:**
 """
@@ -94,10 +97,10 @@ class WorkHandler:
         await update.message.chat.send_action(ChatAction.TYPING)
         
         try:
-            stats = await self.parser.parse_statistics()
+            stats = await self.parser.parse_reports()
             
-            if not stats:
-                await update.message.reply_text("❌ Не удалось получить данные.")
+            if not stats or not stats.get('success'):
+                await update.message.reply_text(f"❌ Не удалось получить данные. {stats.get('error', '')}")
                 return
             
             workers = stats['workers']
@@ -142,10 +145,10 @@ class WorkHandler:
         await update.message.chat.send_action(ChatAction.TYPING)
         
         try:
-            stats = await self.parser.parse_statistics()
+            stats = await self.parser.parse_reports()
             
-            if not stats:
-                await update.message.reply_text("❌ Не удалось получить данные.")
+            if not stats or not stats.get('success'):
+                await update.message.reply_text(f"❌ Не удалось получить данные. {stats.get('error', '')}")
                 return
             
             # Ищем работника
