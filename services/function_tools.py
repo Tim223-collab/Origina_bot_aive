@@ -411,15 +411,16 @@ class FunctionExecutor:
             if reports['workers_count'] == 0:
                 return f"📊 Отчетов за {reports['date']} ({reports['team']}) пока нет.\n\nВозможно отчеты появятся позже или все отчеты за предыдущий день."
             
-            # Формируем официальный отчет
-            result = f"ОТЧЕТ ПО РАБОТЕ СОТРУДНИКОВ\n"
+            # Формируем официальный отчет (простой текст для AI, она сама сформатирует)
+            result = f"📊 ОТЧЕТ ПО РАБОТЕ СОТРУДНИКОВ\n"
             result += f"Дата: {reports['date']}\n"
             result += f"Команда: {reports['team']}\n\n"
-            result += f"Всего работников: {reports['workers_count']}\n"
-            result += f"SFS (успешных): {reports.get('total_sfs', 0)}\n"
-            result += f"Only Now: {reports.get('total_only_now', 0)}\n"
-            result += f"SCH (проверено): {reports.get('total_sch', 0)}\n"
-            result += f"Работников с обнаруженными скам-ассистентами: {reports.get('scam_detected', 0)}\n\n"
+            result += f"Общие показатели:\n"
+            result += f"• Всего работников: {reports['workers_count']}\n"
+            result += f"• SFS (успешных): {reports.get('total_sfs', 0)}\n"
+            result += f"• Only Now: {reports.get('total_only_now', 0)}\n"
+            result += f"• SCH (проверено): {reports.get('total_sch', 0)}\n"
+            result += f"• ⚠️ Скам-ассистенты: {reports.get('scam_detected', 0)} из {reports['workers_count']}\n\n"
             
             # Все работники отсортированные по SFS
             sorted_workers = sorted(reports['workers'], key=lambda x: x.get('sfs', 0), reverse=True)

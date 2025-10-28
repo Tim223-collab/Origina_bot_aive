@@ -373,6 +373,16 @@ class WorkParserService:
             # Даем время на загрузку содержимого
             await asyncio.sleep(1)
             
+            # Уменьшаем масштаб модального окна для большего количества данных
+            await page.evaluate("""
+                const modal = document.querySelector('#blacklistModalDynamic .modal-dialog');
+                if (modal) {
+                    modal.style.transform = 'scale(0.75)';
+                    modal.style.transformOrigin = 'top center';
+                }
+            """)
+            await asyncio.sleep(0.5)
+            
             # Парсим содержимое модального окна
             modal_body = await page.query_selector(self.SELECTORS["modal_body"])
             
@@ -381,7 +391,7 @@ class WorkParserService:
                 modal_html = await modal_body.inner_html()
                 
                 # Создаем скриншот модального окна
-                screenshot_path = await self._take_screenshot(
+                screenshot_path = await self._take_screenshot_modal(
                     page, 
                     f"scam_{report_id}_{worker_name}"
                 )
@@ -411,13 +421,13 @@ class WorkParserService:
         page: Page, 
         name: str
     ) -> Optional[str]:
-        """Создание скриншота"""
+        """Создание скриншота всей страницы"""
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"{name}_{timestamp}.png"
             filepath = self.screenshots_dir / filename
             
-            await page.screenshot(path=str(filepath), full_page=False)
+            await page.screenshot(path=str(filepath), full_page=True)
             
             logger.info(f"📸 Скриншот сохранен: {filepath}")
             return str(filepath)
@@ -425,6 +435,43 @@ class WorkParserService:
         except Exception as e:
             logger.error(f"❌ Ошибка создания скриншота: {e}")
             return None
+    
+    async def _take_screenshot_modal(
+        self, 
+        page: Page, 
+        name: str
+    ) -> Optional[str]:
+        """Создание скриншота модального окна (с автопрокруткой)"""
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{name}_{timestamp}.png"
+            filepath = self.screenshots_dir / filename
+            
+            # Получаем элемент модального окна
+            modal = await page.query_selector(self.SELECTORS["modal"])
+            
+            if modal:
+                # Делаем скриншот только модального окна
+                await modal.screenshot(path=str(filepath))
+                logger.info(f"📸 Скриншот модального окна сохранен: {filepath}")
+            else:
+                # Fallback: скриншот всей страницы
+                await page.screenshot(path=str(filepath), full_page=True)
+                logger.info(f"📸 Скриншот (full page) сохранен: {filepath}")
+            
+            return str(filepath)
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка создания скриншота модального окна: {e}")
+            # Fallback: пытаемся сделать обычный скриншот
+            try:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"{name}_{timestamp}_fallback.png"
+                filepath = self.screenshots_dir / filename
+                await page.screenshot(path=str(filepath))
+                return str(filepath)
+            except:
+                return None
     
     async def get_worker_scam_screenshots(
         self, 

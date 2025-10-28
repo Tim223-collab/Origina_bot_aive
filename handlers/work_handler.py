@@ -49,18 +49,19 @@ class WorkHandler:
                 workers_data=stats['workers']
             )
             
-            # Формируем официальный отчет
-            message = f"""ОТЧЕТ ПО РАБОТЕ СОТРУДНИКОВ
-Дата: {stats['date']}
-Команда: {stats['team']}
+            # Формируем официальный отчет с HTML форматированием
+            message = f"""<b>📊 ОТЧЕТ ПО РАБОТЕ СОТРУДНИКОВ</b>
+📅 Дата: <b>{stats['date']}</b>
+👥 Команда: <b>{stats['team']}</b>
 
-Всего работников: {stats['workers_count']}
-SFS (успешных): {stats['total_sfs']}
-Only Now: {stats.get('total_only_now', 0)}
-SCH (проверено): {stats['total_sch']}
-Работников с обнаруженными скам-ассистентами: {stats['scam_detected']}
+<b>Общие показатели:</b>
+• Всего работников: <b>{stats['workers_count']}</b>
+• SFS (успешных): <b>{stats['total_sfs']}</b>
+• Only Now: <b>{stats.get('total_only_now', 0)}</b>
+• SCH (проверено): <b>{stats['total_sch']}</b>
+• ⚠️ Скам-ассистенты: <b>{stats['scam_detected']} из {stats['workers_count']}</b>
 
-Работники (сортировка по SFS):"""
+<b>Работники (сортировка по SFS):</b>"""
             
             # Сортируем ВСЕХ работников
             sorted_workers = sorted(
@@ -70,11 +71,11 @@ SCH (проверено): {stats['total_sch']}
             )
             
             for i, worker in enumerate(sorted_workers, 1):
-                scam_marker = " ⚠️[СКАМ]" if worker.get('has_scam') else ""
-                message += f"\n{i}. {worker['name']}{scam_marker}"
+                scam_marker = " <b>⚠️[СКАМ]</b>" if worker.get('has_scam') else ""
+                message += f"\n{i}. <b>{worker['name']}</b>{scam_marker}"
                 message += f"\n   SFS: {worker.get('sfs', 0)} | Only Now: {worker.get('only_now', 0)} | SCH: {worker.get('sch', 0)}"
             
-            await update.message.reply_text(message)
+            await update.message.reply_text(message, parse_mode='HTML')
             
         except Exception as e:
             print(f"❌ Ошибка при получении статистики: {e}")

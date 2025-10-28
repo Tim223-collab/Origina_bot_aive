@@ -171,8 +171,9 @@ class AIHandler:
                     else:
                         print(f"⚠️ Скриншоты не найдены в {screenshots_dir}")
                 
-                # Показываем результат пользователю
-                await update.message.reply_text(function_result)
+                # Показываем результат пользователю (с HTML если есть теги)
+                parse_mode = 'HTML' if '<b>' in function_result or '<i>' in function_result else None
+                await update.message.reply_text(function_result, parse_mode=parse_mode)
                 
                 # Добавляем в БД как сообщение ассистента
                 await self.db.add_message(user.id, "assistant", function_result)
