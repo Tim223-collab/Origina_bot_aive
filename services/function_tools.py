@@ -487,11 +487,10 @@ class FunctionExecutor:
             screenshots = list(screenshots_dir.glob(f"*{worker_name}*.png"))
             
             if not screenshots:
-                return f"❌ Скриншоты для работника '{worker_name}' не найдены."
+                return f"❌ Скриншоты для работника '{worker_name}' не найдены. Попробуй команду /screenshot {worker_name}"
             
-            # Возвращаем информацию о найденных файлах
-            result = f"📸 Найдено скриншотов для {worker_name}: {len(screenshots)}\n\n"
-            result += "Используй команду /screenshot {worker_name} для просмотра скриншотов"
+            # Помечаем что нужно отправить фото (это будет обработано в handler)
+            result = f"SEND_PHOTOS:{worker_name}|{len(screenshots)}"
             
             return result
             

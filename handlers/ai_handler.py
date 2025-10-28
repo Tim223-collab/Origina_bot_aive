@@ -142,6 +142,26 @@ class AIHandler:
                 )
                 print(f"✅ Результат функции: {function_result[:200] if function_result else 'None'}...")
                 
+                # Проверяем, нужно ли отправить фото
+                if function_result and function_result.startswith("SEND_PHOTOS:"):
+                    # Формат: SEND_PHOTOS:worker_name|count
+                    parts = function_result.replace("SEND_PHOTOS:", "").split("|")
+                    worker_name = parts[0]
+                    
+                    from pathlib import Path
+                    screenshots_dir = Path("data/screenshots")
+                    screenshots = list(screenshots_dir.glob(f"*{worker_name}*.png"))
+                    
+                    if screenshots:
+                        await update.message.reply_text(f"📸 Отправляю скриншоты для {worker_name}...")
+                        for screenshot_path in screenshots:
+                            with open(screenshot_path, 'rb') as photo:
+                                await update.message.reply_photo(
+                                    photo=photo,
+                                    caption=f"Скриншот: {screenshot_path.name}"
+                                )
+                        function_result = f"✅ Отправлено скриншотов: {len(screenshots)}"
+                
                 # Показываем результат пользователю
                 await update.message.reply_text(function_result)
                 
@@ -226,32 +246,34 @@ class AIHandler:
                     "😔 Произошла ошибка при обработке ответа."
                 )
         
-        # === РАСШИРЕННАЯ ПРОАКТИВНОСТЬ АГЕНТА ===
-        if self.agent and self.agent.is_enabled(user.id):
-            try:
-                # 1. Автоматическое извлечение задач из диалога
-                tasks_result = await self.agent.extract_tasks_from_dialogue(user.id, message_text)
-                
-                if tasks_result and tasks_result.get("suggestion"):
-                    await update.message.reply_text(
-                        f"💡 {tasks_result['suggestion']}",
-                        parse_mode='Markdown'
-                    )
-                
-                # 2. Проверка завершения задач
-                completion_msg = await self.agent.intelligent_task_completion(user.id, message_text)
-                if completion_msg:
-                    await update.message.reply_text(completion_msg)
-                
-                # 3. Предсказательные предложения (изредка)
-                import random
-                if random.random() < 0.1:  # 10% шанс
-                    prediction = await self.agent.predictive_suggestions(user.id)
-                    if prediction:
-                        await update.message.reply_text(prediction)
-                
-            except Exception as e:
-                print(f"⚠️ Ошибка расширенной проактивности: {e}")
+        # === РАСШИРЕННАЯ ПРОАКТИВНОСТЬ АГЕНТА (ОТКЛЮЧЕНА) ===
+        # Закомментировано - пользователь посчитал это назойливым
+        pass
+        # if self.agent and self.agent.is_enabled(user.id):
+        #     try:
+        #         # 1. Автоматическое извлечение задач из диалога
+        #         tasks_result = await self.agent.extract_tasks_from_dialogue(user.id, message_text)
+        #         
+        #         if tasks_result and tasks_result.get("suggestion"):
+        #             await update.message.reply_text(
+        #                 f"💡 {tasks_result['suggestion']}",
+        #                 parse_mode='Markdown'
+        #             )
+        #         
+        #         # 2. Проверка завершения задач
+        #         completion_msg = await self.agent.intelligent_task_completion(user.id, message_text)
+        #         if completion_msg:
+        #             await update.message.reply_text(completion_msg)
+        #         
+        #         # 3. Предсказательные предложения (изредка)
+        #         import random
+        #         if random.random() < 0.1:  # 10% шанс
+        #             prediction = await self.agent.predictive_suggestions(user.id)
+        #             if prediction:
+        #                 await update.message.reply_text(prediction)
+        #         
+        #     except Exception as e:
+        #         print(f"⚠️ Ошибка расширенной проактивности: {e}")
     
     async def clear_context_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
