@@ -53,8 +53,10 @@ class AIHandler:
         # Получаем долгосрочную память для контекста
         memory_context = await self.memory.get_context_for_ai(user.id)
         
-        # Формируем системный промпт с памятью
-        system_prompt = config.SYSTEM_PROMPT
+        # Формируем системный промпт с памятью и текущей датой
+        from datetime import datetime
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        system_prompt = config.SYSTEM_PROMPT + f"\n\nСЕГОДНЯ: {current_date}"
         if memory_context:
             system_prompt += memory_context
         
