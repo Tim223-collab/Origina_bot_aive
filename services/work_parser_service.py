@@ -162,24 +162,20 @@ class WorkParserService:
             if not report_date:
                 report_date = date.today().strftime("%Y-%m-%d")
             
-            # Устанавливаем дату и ждем обновления
-            date_input = await page.query_selector(self.SELECTORS["date_filter"])
-            if date_input:
-                # Сначала очищаем поле
-                await date_input.click(click_count=3)  # Выделяем весь текст
-                await date_input.press("Backspace")  # Удаляем
-                await asyncio.sleep(0.3)
-                
-                # Заполняем новой датой
-                await date_input.type(report_date, delay=50)  # Медленный ввод для надежности
-                await asyncio.sleep(0.5)
-                await date_input.press("Enter")  # Применяем фильтр
-                await asyncio.sleep(1.5)  # Ждем обновления таблицы
+            # Устанавливаем дату через evaluate (для input type="date" нужно устанавливать value)
+            try:
+                await page.evaluate(f"""
+                    const dateInput = document.querySelector('{self.SELECTORS["date_filter"]}');
+                    if (dateInput) {{
+                        dateInput.value = '{report_date}';
+                        dateInput.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                    }}
+                """)
                 logger.info(f"📅 Установлена дата: {report_date}")
-            else:
-                logger.warning("⚠️ Поле даты не найдено")
+            except Exception as e:
+                logger.warning(f"⚠️ Ошибка установки даты: {e}")
             
-            # Выбор команды
+            # Выбор команды (кнопки фильтра)
             team_map = {
                 "Good Bunny": "team_good_bunny",
                 "good bunny": "team_good_bunny",
@@ -194,6 +190,18 @@ class WorkParserService:
                 logger.info(f"✅ Выбрана команда: {team}")
             else:
                 logger.info("ℹ️ Показываем все команды")
+            
+            # Нажимаем кнопку "Применить фильтр" для отправки формы
+            try:
+                submit_btn = await page.query_selector('button[type="submit"]')
+                if submit_btn:
+                    await submit_btn.click()
+                    logger.info("✅ Форма фильтров отправлена")
+                    # Ждем навигации после submit
+                    await page.wait_for_load_state("networkidle")
+                    await asyncio.sleep(1)
+            except Exception as e:
+                logger.warning(f"⚠️ Ошибка отправки формы: {e}")
             
             # Ждем загрузки таблицы
             await self._wait_for_reports_load(page)
