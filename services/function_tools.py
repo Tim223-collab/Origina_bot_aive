@@ -407,15 +407,19 @@ class FunctionExecutor:
                 print(f"❌ Ошибка парсинга: {error_msg}")
                 return f"❌ Ошибка парсинга: {error_msg}"
             
+            # Проверяем, есть ли работники
+            if reports['workers_count'] == 0:
+                return f"📊 Отчетов за {reports['date']} ({reports['team']}) пока нет.\n\nВозможно отчеты появятся позже или все отчеты за предыдущий день."
+            
             # Формируем официальный отчет
             result = f"ОТЧЕТ ПО РАБОТЕ СОТРУДНИКОВ\n"
             result += f"Дата: {reports['date']}\n"
             result += f"Команда: {reports['team']}\n\n"
             result += f"Всего работников: {reports['workers_count']}\n"
-            result += f"SFS (успешных): {reports['total_sfs']}\n"
-            result += f"Only Now: {reports['total_only_now']}\n"
-            result += f"SCH (проверено): {reports['total_sch']}\n"
-            result += f"Работников с обнаруженными скам-ассистентами: {reports['scam_detected']}\n\n"
+            result += f"SFS (успешных): {reports.get('total_sfs', 0)}\n"
+            result += f"Only Now: {reports.get('total_only_now', 0)}\n"
+            result += f"SCH (проверено): {reports.get('total_sch', 0)}\n"
+            result += f"Работников с обнаруженными скам-ассистентами: {reports.get('scam_detected', 0)}\n\n"
             
             # Все работники отсортированные по SFS
             sorted_workers = sorted(reports['workers'], key=lambda x: x.get('sfs', 0), reverse=True)

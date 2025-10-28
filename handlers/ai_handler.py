@@ -53,10 +53,43 @@ class AIHandler:
         # Получаем долгосрочную память для контекста
         memory_context = await self.memory.get_context_for_ai(user.id)
         
-        # Формируем системный промпт с памятью и текущей датой
-        from datetime import datetime
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        system_prompt = config.SYSTEM_PROMPT + f"\n\nСЕГОДНЯ: {current_date}"
+        # Формируем системный промпт с памятью и текущей датой по Киеву
+        from datetime import datetime, timedelta
+        import pytz
+        
+        kiev_tz = pytz.timezone('Europe/Kiev')
+        current_time = datetime.now(kiev_tz)
+        current_date = current_time.strftime("%Y-%m-%d")
+        current_datetime = current_time.strftime("%Y-%m-%d %H:%M")
+        current_day = current_time.day
+        current_month = current_time.month
+        current_year = current_time.year
+        yesterday = (current_time - timedelta(days=1)).strftime("%Y-%m-%d")
+        day_before = (current_time - timedelta(days=2)).strftime("%Y-%m-%d")
+        
+        system_prompt = config.SYSTEM_PROMPT + f"""
+
+📅 ТЕКУЩАЯ ДАТА И ВРЕМЯ (Киев/Украина):
+Сейчас: {current_datetime} (день {current_day}, месяц {current_month}, год {current_year})
+Сегодня: {current_date}
+Вчера: {yesterday}
+Позавчера: {day_before}
+
+📊 ПРАВИЛА РАБОТЫ С ДАТАМИ:
+1. Когда пользователь говорит "за 23" или "23 числа" - это означает {current_year}-{current_month:02d}-23
+2. Когда говорит "за вчера" - используй дату {yesterday}
+3. Когда "позавчера" - используй дату {day_before}
+4. Когда называет только число (например "27") - это число текущего месяца {current_month}
+5. Всегда формируй дату в формате YYYY-MM-DD
+6. Если пользователь не указывает дату или говорит "сегодня", "сейчас" - НЕ передавай параметр date вообще
+
+ПРИМЕРЫ:
+- "статистика за 23" → date = "{current_year}-{current_month:02d}-23"
+- "покажи за вчера" → date = "{yesterday}"
+- "статистика за сегодня" → date НЕ передавать (оставить пустым)
+- "за 27 число" → date = "{current_year}-{current_month:02d}-27"
+"""
+        
         if memory_context:
             system_prompt += memory_context
         
