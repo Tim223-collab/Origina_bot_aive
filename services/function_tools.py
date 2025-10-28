@@ -378,11 +378,17 @@ class FunctionExecutor:
         team = args.get('team', 'Good Bunny')
         
         try:
+            print(f"🔍 Запрос статистики: дата={date}, команда={team}")
+            
             # Парсим отчеты
             reports = await self.parser.parse_reports(team=team, report_date=date)
             
+            print(f"📊 Результат парсинга: success={reports.get('success')}, workers={reports.get('workers_count', 0)}")
+            
             if not reports.get('success'):
-                return f"❌ Ошибка парсинга: {reports.get('error', 'Неизвестная ошибка')}"
+                error_msg = reports.get('error', 'Неизвестная ошибка')
+                print(f"❌ Ошибка парсинга: {error_msg}")
+                return f"❌ Ошибка парсинга: {error_msg}"
             
             # Формируем официальный отчет
             result = f"ОТЧЕТ ПО РАБОТЕ СОТРУДНИКОВ\n"

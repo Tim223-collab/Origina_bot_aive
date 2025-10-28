@@ -99,11 +99,13 @@ class AIHandler:
                 arguments = json.loads(tool_call["function"]["arguments"])
                 
                 # Выполняем функцию
+                print(f"🔧 Вызов функции: {function_name} с аргументами: {arguments}")
                 function_result = await self.function_executor.execute_function(
                     function_name=function_name,
                     arguments=arguments,
                     user_id=user.id
                 )
+                print(f"✅ Результат функции: {function_result[:200] if function_result else 'None'}...")
                 
                 # Показываем результат пользователю
                 await update.message.reply_text(function_result)
