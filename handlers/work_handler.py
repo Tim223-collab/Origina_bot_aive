@@ -74,7 +74,7 @@ SCH (проверено): {stats['total_sch']}
                 message += f"\n{i}. {worker['name']}{scam_marker}"
                 message += f"\n   SFS: {worker.get('sfs', 0)} | Only Now: {worker.get('only_now', 0)} | SCH: {worker.get('sch', 0)}"
             
-            await update.message.reply_text(message, parse_mode='Markdown')
+            await update.message.reply_text(message)
             
         except Exception as e:
             print(f"❌ Ошибка при получении статистики: {e}")

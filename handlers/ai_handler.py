@@ -191,30 +191,30 @@ class AIHandler:
                     "content": function_result
                 })
                 
-                # Получаем финальный ответ от ИИ с анализом результата
-                # Добавляем инструкцию для AI
-                messages.append({
-                    "role": "system",
-                    "content": """ВАЖНО: Пользователь уже получил данные выше. 
-                    
-Твоя задача - дать КРАТКОЕ резюме (2-3 предложения):
-- Главные выводы
-- Что важно обратить внимание
-- Рекомендации (если есть проблемы)
+                # Финальный ответ ТОЛЬКО для статистики, НЕ для скриншотов
+                if function_name == 'get_work_stats':
+                    # Добавляем инструкцию для AI
+                    messages.append({
+                        "role": "system",
+                        "content": """ВАЖНО: Пользователь уже получил отчет выше. 
+                        
+Дай ОЧЕНЬ КРАТКОЕ резюме (максимум 2 предложения):
+- Кто лидер и кто отстает
+- Главная проблема (если есть)
 
-НЕ ДУБЛИРУЙ все данные! Только ключевые моменты и выводы.
-Пиши кратко и по делу. Используй эмодзи для наглядности."""
-                })
-                
-                final_response = await self.ai.chat(
-                    messages=messages,
-                    temperature=0.7,
-                    max_tokens=300  # Ограничиваем для краткости
-                )
-                
-                if final_response and isinstance(final_response, str) and len(final_response) > 10:
-                    await update.message.reply_text(final_response)
-                    await self.db.add_message(user.id, "assistant", final_response)
+НЕ ПЕРЕЧИСЛЯЙ всех! НЕ ДУБЛИРУЙ цифры! Только самое важное.
+Пиши как человек, без "рекомендую", "предлагаю" и т.д."""
+                    })
+                    
+                    final_response = await self.ai.chat(
+                        messages=messages,
+                        temperature=0.7,
+                        max_tokens=150  # Еще короче
+                    )
+                    
+                    if final_response and isinstance(final_response, str) and len(final_response) > 10:
+                        await update.message.reply_text(final_response)
+                        await self.db.add_message(user.id, "assistant", final_response)
             
             # Старый формат: function_call (для обратной совместимости)
             elif isinstance(response, dict) and "function_call" in response:
