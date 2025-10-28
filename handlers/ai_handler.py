@@ -144,6 +144,7 @@ class AIHandler:
                 
                 # Проверяем, нужно ли отправить фото
                 if function_result and function_result.startswith("SEND_PHOTOS:"):
+                    print(f"📸 Обнаружен запрос на отправку фото: {function_result}")
                     # Формат: SEND_PHOTOS:worker_name|count
                     parts = function_result.replace("SEND_PHOTOS:", "").split("|")
                     worker_name = parts[0]
@@ -152,15 +153,23 @@ class AIHandler:
                     screenshots_dir = Path("data/screenshots")
                     screenshots = list(screenshots_dir.glob(f"*{worker_name}*.png"))
                     
+                    print(f"📁 Найдено скриншотов: {len(screenshots)} в {screenshots_dir}")
+                    
                     if screenshots:
                         await update.message.reply_text(f"📸 Отправляю скриншоты для {worker_name}...")
                         for screenshot_path in screenshots:
-                            with open(screenshot_path, 'rb') as photo:
-                                await update.message.reply_photo(
-                                    photo=photo,
-                                    caption=f"Скриншот: {screenshot_path.name}"
-                                )
+                            print(f"📤 Отправляю: {screenshot_path}")
+                            try:
+                                with open(screenshot_path, 'rb') as photo:
+                                    await update.message.reply_photo(
+                                        photo=photo,
+                                        caption=f"Скриншот: {screenshot_path.name}"
+                                    )
+                            except Exception as e:
+                                print(f"❌ Ошибка отправки фото: {e}")
                         function_result = f"✅ Отправлено скриншотов: {len(screenshots)}"
+                    else:
+                        print(f"⚠️ Скриншоты не найдены в {screenshots_dir}")
                 
                 # Показываем результат пользователю
                 await update.message.reply_text(function_result)
@@ -182,18 +191,30 @@ class AIHandler:
                     "content": function_result
                 })
                 
-                # Получаем финальный ответ от ИИ (с учетом результата функции)
+                # Получаем финальный ответ от ИИ с анализом результата
+                # Добавляем инструкцию для AI
+                messages.append({
+                    "role": "system",
+                    "content": """ВАЖНО: Пользователь уже получил данные выше. 
+                    
+Твоя задача - дать КРАТКОЕ резюме (2-3 предложения):
+- Главные выводы
+- Что важно обратить внимание
+- Рекомендации (если есть проблемы)
+
+НЕ ДУБЛИРУЙ все данные! Только ключевые моменты и выводы.
+Пиши кратко и по делу. Используй эмодзи для наглядности."""
+                })
+                
                 final_response = await self.ai.chat(
                     messages=messages,
                     temperature=0.7,
-                    max_tokens=1000
+                    max_tokens=300  # Ограничиваем для краткости
                 )
                 
-                if final_response and isinstance(final_response, str):
-                    # Если финальный ответ отличается от результата функции, отправляем его
-                    if final_response != function_result and len(final_response) > 10:
-                        await update.message.reply_text(final_response)
-                        await self.db.add_message(user.id, "assistant", final_response)
+                if final_response and isinstance(final_response, str) and len(final_response) > 10:
+                    await update.message.reply_text(final_response)
+                    await self.db.add_message(user.id, "assistant", final_response)
             
             # Старый формат: function_call (для обратной совместимости)
             elif isinstance(response, dict) and "function_call" in response:
