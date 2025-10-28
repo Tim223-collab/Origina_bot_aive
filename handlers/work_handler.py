@@ -49,19 +49,18 @@ class WorkHandler:
                 workers_data=stats['workers']
             )
             
-            # Формируем красивый ответ
-            scam_emoji = "🚨" if stats['scam_detected'] > 0 else "✅"
-            message = f"""📊 **Статистика работы**
-📅 Дата: {stats['date']}
-👥 Команда: {stats['team']}
+            # Формируем официальный отчет
+            message = f"""ОТЧЕТ ПО РАБОТЕ СОТРУДНИКОВ
+Дата: {stats['date']}
+Команда: {stats['team']}
 
-📝 Работников: **{stats['workers_count']}**
-✅ Успешных (SFS): **{stats['total_sfs']}**
-📋 Проверено (SCH): **{stats['total_sch']}**
-{scam_emoji} Скам: **{stats['scam_detected']}** работник(ов)
+Всего работников: {stats['workers_count']}
+SFS (успешных): {stats['total_sfs']}
+Only Now: {stats.get('total_only_now', 0)}
+SCH (проверено): {stats['total_sch']}
+Работников с обнаруженными скам-ассистентами: {stats['scam_detected']}
 
-**Топ-5 работников по SFS:**
-"""
+Топ-5 по SFS:"""
             
             # Сортируем работников
             top_workers = sorted(
@@ -71,9 +70,9 @@ class WorkHandler:
             )[:5]
             
             for i, worker in enumerate(top_workers, 1):
-                team_emoji = "💚" if "Good Bunny" in worker.get('team', '') else "💙"
-                message += f"\n{i}. {team_emoji} **{worker['name']}**"
-                message += f"\n   SFS: {worker.get('sfs', 0)} | Only now: {worker.get('only_now', 0)} | SCH: {worker.get('sch', 0)}"
+                scam_marker = " [скам обнаружен]" if worker.get('has_scam') else ""
+                message += f"\n{i}. {worker['name']}{scam_marker}"
+                message += f"\n   SFS: {worker.get('sfs', 0)} | Only Now: {worker.get('only_now', 0)} | SCH: {worker.get('sch', 0)}"
             
             await update.message.reply_text(message, parse_mode='Markdown')
             

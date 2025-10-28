@@ -159,10 +159,16 @@ class WorkParserService:
             await page.goto(reports_url, wait_until="networkidle")
             
             # Установка фильтров
-            if report_date:
-                await page.fill(self.SELECTORS["date_filter"], report_date)
-            else:
+            if not report_date:
                 report_date = date.today().strftime("%Y-%m-%d")
+            
+            # Устанавливаем дату и ждем обновления
+            date_input = await page.query_selector(self.SELECTORS["date_filter"])
+            if date_input:
+                await date_input.fill(report_date)
+                await date_input.press("Enter")  # Применяем фильтр
+                await asyncio.sleep(1)  # Ждем обновления таблицы
+                logger.info(f"📅 Установлена дата: {report_date}")
             
             # Выбор команды
             team_map = {

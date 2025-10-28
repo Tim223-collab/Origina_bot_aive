@@ -92,8 +92,44 @@ class AIHandler:
         
         # Пытаемся обработать как обычный ответ
         try:
-            # Если ИИ вызвал функцию, обрабатываем
-            if isinstance(response, dict) and "function_call" in response:
+            # Новый формат: tool_calls (DeepSeek API v1)
+            if isinstance(response, dict) and "tool_calls" in response and response["tool_calls"]:
+                tool_call = response["tool_calls"][0]  # Берём первый вызов
+                function_name = tool_call["function"]["name"]
+                arguments = json.loads(tool_call["function"]["arguments"])
+                
+                # Выполняем функцию
+                function_result = await self.function_executor.execute_function(
+                    function_name=function_name,
+                    arguments=arguments,
+                    user_id=user.id
+                )
+                
+                # Показываем результат
+                await update.message.reply_text(function_result)
+                
+                # Добавляем результат функции в контекст для финального ответа
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call["id"],
+                    "content": function_result
+                })
+                
+                # Получаем финальный ответ от ИИ (с учетом результата функции)
+                final_response = await self.ai.chat(
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=1000
+                )
+                
+                if final_response:
+                    await self.db.add_message(user.id, "assistant", final_response)
+                    # Если финальный ответ отличается от результата функции, отправляем его
+                    if final_response != function_result and len(final_response) > 10:
+                        await update.message.reply_text(final_response)
+            
+            # Старый формат: function_call (для обратной совместимости)
+            elif isinstance(response, dict) and "function_call" in response:
                 function_name = response["function_call"]["name"]
                 arguments = json.loads(response["function_call"]["arguments"])
                 

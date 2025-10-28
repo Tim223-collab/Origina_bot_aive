@@ -367,26 +367,23 @@ class FunctionExecutor:
             if not reports.get('success'):
                 return f"❌ Ошибка парсинга: {reports.get('error', 'Неизвестная ошибка')}"
             
-            # Формируем отчет
-            result = f"📊 **Отчет по команде {reports['team']}** за {reports['date']}\n\n"
-            result += f"👥 Работников: {reports['workers_count']}\n"
-            result += f"📈 SFS: {reports['total_sfs']}\n"
-            result += f"⏱️ Only Now: {reports['total_only_now']}\n"
-            result += f"✅ SCH: {reports['total_sch']}\n"
+            # Формируем официальный отчет
+            result = f"ОТЧЕТ ПО РАБОТЕ СОТРУДНИКОВ\n"
+            result += f"Дата: {reports['date']}\n"
+            result += f"Команда: {reports['team']}\n\n"
+            result += f"Всего работников: {reports['workers_count']}\n"
+            result += f"SFS (успешных): {reports['total_sfs']}\n"
+            result += f"Only Now: {reports['total_only_now']}\n"
+            result += f"SCH (проверено): {reports['total_sch']}\n"
+            result += f"Работников с обнаруженными скам-ассистентами: {reports['scam_detected']}\n"
             
-            if reports['scam_detected'] > 0:
-                result += f"\n🚨 **СКАМ ОБНАРУЖЕН**: {reports['scam_detected']} работник(ов)\n"
-            else:
-                result += f"\n✅ Скам не обнаружен\n"
-            
-            # Детали по работникам (топ 10 или со скамом)
+            # Детали по работникам, нашедшим скам-ассистентов
             workers_with_scam = [w for w in reports['workers'] if w.get('has_scam')]
             
             if workers_with_scam:
-                result += f"\n⚠️ **Работники со скамом:**\n"
+                result += f"\nРаботники, обнаружившие скам-ассистентов:\n"
                 for w in workers_with_scam[:10]:
-                    status_emoji = "🚨" if w['scam_status'] == 'scam_detected' else "⚠️"
-                    result += f"{status_emoji} {w['name']} (SFS: {w['sfs']}, SCH: {w['sch']})\n"
+                    result += f"- {w['name']} (SFS: {w['sfs']}, SCH: {w['sch']})\n"
             
             return result
             

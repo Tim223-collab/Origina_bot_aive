@@ -69,10 +69,17 @@ class AIService:
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
         
-        # Function calling
+        # Function calling - используем новый формат tools
         if functions:
-            payload["functions"] = functions
-            payload["function_call"] = "auto"
+            # Конвертируем старый формат functions в новый формат tools
+            tools = []
+            for func in functions:
+                tools.append({
+                    "type": "function",
+                    "function": func
+                })
+            payload["tools"] = tools
+            payload["tool_choice"] = "auto"
         
         try:
             async with aiohttp.ClientSession() as session:
@@ -88,7 +95,11 @@ class AIService:
                         # Проверяем наличие reasoning content (для deepseek-reasoner)
                         message = data['choices'][0]['message']
                         
-                        # Если есть function_call - возвращаем весь message для обработки
+                        # Если есть tool_calls (новый формат) - возвращаем весь message для обработки
+                        if 'tool_calls' in message and message['tool_calls']:
+                            return message
+                        
+                        # Поддержка старого формата function_call (для обратной совместимости)
                         if 'function_call' in message:
                             return message
                         
