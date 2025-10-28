@@ -105,10 +105,20 @@ class AIHandler:
                     user_id=user.id
                 )
                 
-                # Показываем результат
+                # Показываем результат пользователю
                 await update.message.reply_text(function_result)
                 
-                # Добавляем результат функции в контекст для финального ответа
+                # Добавляем в БД как сообщение ассистента
+                await self.db.add_message(user.id, "assistant", function_result)
+                
+                # ВАЖНО: Сначала добавляем сообщение ассистента с tool_calls
+                messages.append({
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": response["tool_calls"]
+                })
+                
+                # Затем добавляем ответ от функции
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call["id"],
@@ -122,11 +132,11 @@ class AIHandler:
                     max_tokens=1000
                 )
                 
-                if final_response:
-                    await self.db.add_message(user.id, "assistant", final_response)
+                if final_response and isinstance(final_response, str):
                     # Если финальный ответ отличается от результата функции, отправляем его
                     if final_response != function_result and len(final_response) > 10:
                         await update.message.reply_text(final_response)
+                        await self.db.add_message(user.id, "assistant", final_response)
             
             # Старый формат: function_call (для обратной совместимости)
             elif isinstance(response, dict) and "function_call" in response:

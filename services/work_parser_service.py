@@ -165,10 +165,19 @@ class WorkParserService:
             # Устанавливаем дату и ждем обновления
             date_input = await page.query_selector(self.SELECTORS["date_filter"])
             if date_input:
-                await date_input.fill(report_date)
+                # Сначала очищаем поле
+                await date_input.click(click_count=3)  # Выделяем весь текст
+                await date_input.press("Backspace")  # Удаляем
+                await asyncio.sleep(0.3)
+                
+                # Заполняем новой датой
+                await date_input.type(report_date, delay=50)  # Медленный ввод для надежности
+                await asyncio.sleep(0.5)
                 await date_input.press("Enter")  # Применяем фильтр
-                await asyncio.sleep(1)  # Ждем обновления таблицы
+                await asyncio.sleep(1.5)  # Ждем обновления таблицы
                 logger.info(f"📅 Установлена дата: {report_date}")
+            else:
+                logger.warning("⚠️ Поле даты не найдено")
             
             # Выбор команды
             team_map = {
