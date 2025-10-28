@@ -1,8 +1,7 @@
 """
 Сервис для работы с изображениями через Google Gemini
 """
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 from PIL import Image
 import io
 import os
@@ -13,21 +12,22 @@ import config
 
 class VisionService:
     """
-    Анализ изображений через Google Gemini 2.5 Flash
-    Использует новый SDK от Google
+    Анализ изображений через Google Gemini Flash
+    Использует стабильный SDK от Google
     """
     
     def __init__(self, api_key: str = None):
         self.api_key = api_key or config.GEMINI_API_KEY
         
         if self.api_key:
-            # Новый SDK - используем Client
-            self.client = genai.Client(api_key=self.api_key)
-            self.model_name = "gemini-2.0-flash-exp"  # Актуальная бесплатная модель
-            print("✅ Gemini Vision Service инициализирован (gemini-2.0-flash-exp)")
+            # Настраиваем API
+            genai.configure(api_key=self.api_key)
+            self.model_name = "gemini-1.5-flash"  # Стабильная модель с поддержкой изображений
+            self.model = genai.GenerativeModel(self.model_name)
+            print(f"✅ Gemini Vision Service инициализирован ({self.model_name})")
         else:
             print("⚠️ GEMINI_API_KEY не найден в .env")
-            self.client = None
+            self.model = None
             self.model_name = None
     
     async def analyze_image(self, 
@@ -45,7 +45,7 @@ class VisionService:
         Returns:
             Ответ от модели
         """
-        if not self.client:
+        if not self.model:
             return "❌ Gemini API не настроен. Добавь GEMINI_API_KEY в .env"
         
         try:
@@ -60,14 +60,11 @@ class VisionService:
                 else:
                     prompt = "Describe in detail what is shown in this image"
             
-            # Открываем изображение через PIL (это нужно для нового API)
+            # Открываем изображение через PIL
             image = Image.open(io.BytesIO(image_bytes))
             
-            # Новый API - передаем PIL Image объект
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=[prompt, image]
-            )
+            # Стабильный API - передаем список с промптом и изображением
+            response = self.model.generate_content([prompt, image])
             
             return response.text
             
@@ -85,7 +82,7 @@ class VisionService:
         Returns:
             Распознанный текст
         """
-        if not self.client:
+        if not self.model:
             return "❌ Gemini API не настроен"
         
         try:
@@ -97,10 +94,7 @@ class VisionService:
             # Открываем изображение через PIL
             image = Image.open(io.BytesIO(image_bytes))
             
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=[prompt, image]
-            )
+            response = self.model.generate_content([prompt, image])
             
             return response.text
             
@@ -118,7 +112,7 @@ class VisionService:
         Returns:
             Анализ кода
         """
-        if not self.client:
+        if not self.model:
             return "❌ Gemini API не настроен"
         
         try:
@@ -134,10 +128,7 @@ class VisionService:
             # Открываем изображение через PIL
             image = Image.open(io.BytesIO(image_bytes))
             
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=[prompt, image]
-            )
+            response = self.model.generate_content([prompt, image])
             
             return response.text
             
@@ -155,7 +146,7 @@ class VisionService:
         Returns:
             Анализ графика
         """
-        if not self.client:
+        if not self.model:
             return "❌ Gemini API не настроен"
         
         try:
@@ -172,10 +163,7 @@ class VisionService:
             # Открываем изображение через PIL
             image = Image.open(io.BytesIO(image_bytes))
             
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=[prompt, image]
-            )
+            response = self.model.generate_content([prompt, image])
             
             return response.text
             
