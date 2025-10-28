@@ -104,20 +104,24 @@ class TelegramBot:
         # Регистрируем обработчики команд
         self._register_handlers()
         
-        # Добавляем задачу проверки напоминаний
-        job_queue = self.app.job_queue
-        job_queue.run_repeating(
-            self.check_reminders,
-            interval=60,
-            first=10
-        )
-        
-        # Добавляем задачу проверки AI агента
-        job_queue.run_repeating(
-            self.check_agent,
-            interval=3600,  # Каждый час
-            first=300  # Первая проверка через 5 минут
-        )
+        # Добавляем задачи, если job_queue доступна
+        if self.app.job_queue:
+            # Добавляем задачу проверки напоминаний
+            self.app.job_queue.run_repeating(
+                self.check_reminders,
+                interval=60,
+                first=10
+            )
+            
+            # Добавляем задачу проверки AI агента
+            self.app.job_queue.run_repeating(
+                self.check_agent,
+                interval=3600,  # Каждый час
+                first=300  # Первая проверка через 5 минут
+            )
+            logger.info("✅ Job queue настроена")
+        else:
+            logger.warning("⚠️ Job queue недоступна - фоновые задачи отключены")
         
         logger.info("✅ Обработчики зарегистрированы")
         logger.info("✅ Бот готов к запуску!")
