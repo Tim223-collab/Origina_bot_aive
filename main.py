@@ -143,6 +143,7 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("stats", self.work_handler.stats_command))
         self.app.add_handler(CommandHandler("workers", self.work_handler.workers_command))
         self.app.add_handler(CommandHandler("check", self.work_handler.check_worker_command))
+        self.app.add_handler(CommandHandler("screenshot", self.work_handler.send_worker_screenshot))
         
         # Память
         self.app.add_handler(CommandHandler("remember", self.utils_handler.remember_command))

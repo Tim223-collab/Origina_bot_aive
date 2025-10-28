@@ -60,17 +60,17 @@ Only Now: {stats.get('total_only_now', 0)}
 SCH (проверено): {stats['total_sch']}
 Работников с обнаруженными скам-ассистентами: {stats['scam_detected']}
 
-Топ-5 по SFS:"""
+Работники (сортировка по SFS):"""
             
-            # Сортируем работников
-            top_workers = sorted(
+            # Сортируем ВСЕХ работников
+            sorted_workers = sorted(
                 stats['workers'], 
                 key=lambda x: x.get('sfs', 0), 
                 reverse=True
-            )[:5]
+            )
             
-            for i, worker in enumerate(top_workers, 1):
-                scam_marker = " [скам обнаружен]" if worker.get('has_scam') else ""
+            for i, worker in enumerate(sorted_workers, 1):
+                scam_marker = " ⚠️[СКАМ]" if worker.get('has_scam') else ""
                 message += f"\n{i}. {worker['name']}{scam_marker}"
                 message += f"\n   SFS: {worker.get('sfs', 0)} | Only Now: {worker.get('only_now', 0)} | SCH: {worker.get('sch', 0)}"
             
@@ -183,4 +183,49 @@ SCH (проверено): {stats['total_sch']}
         except Exception as e:
             print(f"❌ Ошибка: {e}")
             await update.message.reply_text("❌ Произошла ошибка.")
+    
+    async def send_worker_screenshot(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        /screenshot <имя работника> - отправляет скриншот работника
+        """
+        user = update.effective_user
+        
+        if not context.args:
+            await update.message.reply_text("❌ Укажи имя работника. Пример: /screenshot Julia")
+            return
+        
+        worker_name = " ".join(context.args)
+        
+        await update.message.chat.send_action(ChatAction.TYPING)
+        await update.message.reply_text(f"🔍 Ищу скриншот для {worker_name}...")
+        
+        try:
+            # Ищем скриншот в data/screenshots
+            from pathlib import Path
+            screenshots_dir = Path("data/screenshots")
+            
+            if not screenshots_dir.exists():
+                await update.message.reply_text("❌ Папка со скриншотами не найдена.")
+                return
+            
+            # Ищем файлы со скриншотами работника
+            screenshots = list(screenshots_dir.glob(f"*{worker_name}*.png"))
+            
+            if not screenshots:
+                await update.message.reply_text(f"❌ Скриншоты для работника '{worker_name}' не найдены.")
+                return
+            
+            # Отправляем все найденные скриншоты
+            for screenshot_path in screenshots:
+                with open(screenshot_path, 'rb') as photo:
+                    await update.message.reply_photo(
+                        photo=photo,
+                        caption=f"📸 Скриншот: {screenshot_path.name}"
+                    )
+            
+            await update.message.reply_text(f"✅ Отправлено скриншотов: {len(screenshots)}")
+            
+        except Exception as e:
+            print(f"❌ Ошибка отправки скриншота: {e}")
+            await update.message.reply_text("❌ Произошла ошибка при отправке скриншота.")
 

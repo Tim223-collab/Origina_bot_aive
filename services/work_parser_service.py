@@ -316,11 +316,13 @@ class WorkParserService:
             has_scam = False
             scam_status = "clean"
             
+            # Скам = только красный крестик (работник нашел скам-ассистентов)
+            # Желтый треугольник = подозрительная активность (НЕ скам!)
             if scam_icon_red:
                 has_scam = True
                 scam_status = "scam_detected"
             elif scam_icon_yellow:
-                has_scam = True
+                has_scam = False  # Это не скам, это подозрительная активность
                 scam_status = "suspicious"
             elif scam_icon_green:
                 scam_status = "clean"

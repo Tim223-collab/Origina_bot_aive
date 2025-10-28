@@ -166,6 +166,20 @@ AVAILABLE_FUNCTIONS = [
             },
             "required": ["worker_name"]
         }
+    },
+    {
+        "name": "send_worker_screenshot",
+        "description": "Отправить скриншот работника. Используй когда пользователь просит показать/отправить скриншот работника (например: 'покажи скриншот Юли', 'отправь скрин Марины', 'скриншот Кирилла').",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "worker_name": {
+                    "type": "string",
+                    "description": "Имя работника"
+                }
+            },
+            "required": ["worker_name"]
+        }
     }
 ]
 
@@ -221,6 +235,9 @@ class FunctionExecutor:
             
             elif function_name == "check_worker_scam":
                 return await self._check_worker_scam(user_id, arguments)
+            
+            elif function_name == "send_worker_screenshot":
+                return await self._send_worker_screenshot(user_id, arguments)
             
             else:
                 return f"❌ Неизвестная функция: {function_name}"
@@ -375,15 +392,15 @@ class FunctionExecutor:
             result += f"SFS (успешных): {reports['total_sfs']}\n"
             result += f"Only Now: {reports['total_only_now']}\n"
             result += f"SCH (проверено): {reports['total_sch']}\n"
-            result += f"Работников с обнаруженными скам-ассистентами: {reports['scam_detected']}\n"
+            result += f"Работников с обнаруженными скам-ассистентами: {reports['scam_detected']}\n\n"
             
-            # Детали по работникам, нашедшим скам-ассистентов
-            workers_with_scam = [w for w in reports['workers'] if w.get('has_scam')]
-            
-            if workers_with_scam:
-                result += f"\nРаботники, обнаружившие скам-ассистентов:\n"
-                for w in workers_with_scam[:10]:
-                    result += f"- {w['name']} (SFS: {w['sfs']}, SCH: {w['sch']})\n"
+            # Все работники отсортированные по SFS
+            sorted_workers = sorted(reports['workers'], key=lambda x: x.get('sfs', 0), reverse=True)
+            result += f"Работники (сортировка по SFS):\n"
+            for i, w in enumerate(sorted_workers, 1):
+                scam_marker = " ⚠️[СКАМ]" if w.get('has_scam') else ""
+                result += f"{i}. {w['name']}{scam_marker}\n"
+                result += f"   SFS: {w['sfs']} | Only Now: {w.get('only_now', 0)} | SCH: {w['sch']}\n"
             
             return result
             
@@ -427,4 +444,30 @@ class FunctionExecutor:
             
         except Exception as e:
             return f"❌ Ошибка проверки работника: {str(e)}"
+    
+    async def _send_worker_screenshot(self, user_id: int, args: Dict) -> str:
+        """Отправить скриншот работника"""
+        worker_name = args.get('worker_name')
+        
+        try:
+            from pathlib import Path
+            screenshots_dir = Path("data/screenshots")
+            
+            if not screenshots_dir.exists():
+                return "❌ Папка со скриншотами не найдена."
+            
+            # Ищем скриншоты
+            screenshots = list(screenshots_dir.glob(f"*{worker_name}*.png"))
+            
+            if not screenshots:
+                return f"❌ Скриншоты для работника '{worker_name}' не найдены."
+            
+            # Возвращаем информацию о найденных файлах
+            result = f"📸 Найдено скриншотов для {worker_name}: {len(screenshots)}\n\n"
+            result += "Используй команду /screenshot {worker_name} для просмотра скриншотов"
+            
+            return result
+            
+        except Exception as e:
+            return f"❌ Ошибка: {str(e)}"
 
