@@ -115,6 +115,31 @@ class AIHandler:
         if not recent_messages or recent_messages[-1]["content"] != message_text:
             messages.append({"role": "user", "content": message_text})
         
+        # === Быстрые интенты без ИИ: показать сохранённые фото ===
+        import re
+        text_lower = message_text.lower()
+        if re.search(r"(покажи|отправь|скинь).*(последн|свеж|крайн).*фото|последн.*фото", text_lower):
+            # Берём последнее сохранённое изображение из библиотеки
+            items = await self.db.get_content(user.id, content_type='image', limit=1)
+            if items:
+                item = items[0]
+                title = item.get('title', 'Без названия')
+                category = item.get('category', 'other')
+                caption = f"📸 <b>{title}</b>\n🏷 {category.title()}"
+                try:
+                    from pathlib import Path
+                    if item.get('file_path') and Path(item['file_path']).exists():
+                        with open(item['file_path'], 'rb') as photo:
+                            await update.message.reply_photo(photo=photo, caption=caption, parse_mode='HTML')
+                            return
+                    elif item.get('file_id'):
+                        await context.bot.send_photo(chat_id=update.effective_chat.id, photo=item['file_id'], caption=caption, parse_mode='HTML')
+                        return
+                except Exception:
+                    pass
+                await update.message.reply_text("⚠️ Не удалось отправить фото. Попробуй ещё раз или сохрани новое.")
+                return
+
         # === ВЫЗОВ ИИ С FUNCTION CALLING ===
         response = await self.ai.chat(
             messages=messages,
