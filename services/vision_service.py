@@ -6,8 +6,13 @@ from PIL import Image
 import io
 import os
 import base64
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 import config
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class VisionService:
@@ -18,15 +23,16 @@ class VisionService:
     
     def __init__(self, api_key: str = None):
         self.api_key = api_key or config.GEMINI_API_KEY
+        self.executor = ThreadPoolExecutor(max_workers=2)  # Для асинхронных вызовов
         
         if self.api_key:
             # Настраиваем API
             genai.configure(api_key=self.api_key)
             self.model_name = "gemini-1.5-flash"  # Стабильная модель с поддержкой изображений
             self.model = genai.GenerativeModel(self.model_name)
-            print(f"✅ Gemini Vision Service инициализирован ({self.model_name})")
+            logger.info(f"✅ Gemini Vision Service инициализирован ({self.model_name})")
         else:
-            print("⚠️ GEMINI_API_KEY не найден в .env")
+            logger.warning("⚠️ GEMINI_API_KEY не найден в .env")
             self.model = None
             self.model_name = None
     
@@ -63,13 +69,18 @@ class VisionService:
             # Открываем изображение через PIL
             image = Image.open(io.BytesIO(image_bytes))
             
-            # Стабильный API - передаем список с промптом и изображением
-            response = self.model.generate_content([prompt, image])
+            # Запускаем синхронный вызов Gemini в отдельном потоке
+            # чтобы не блокировать event loop
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                self.executor,
+                lambda: self.model.generate_content([prompt, image])
+            )
             
             return response.text
             
         except Exception as e:
-            print(f"❌ Ошибка анализа изображения: {e}")
+            logger.error(f"❌ Ошибка анализа изображения: {e}")
             return f"❌ Ошибка при анализе изображения: {str(e)}"
     
     async def ocr_image(self, image_bytes: bytes) -> Optional[str]:
@@ -94,12 +105,17 @@ class VisionService:
             # Открываем изображение через PIL
             image = Image.open(io.BytesIO(image_bytes))
             
-            response = self.model.generate_content([prompt, image])
+            # Асинхронный вызов через executor
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                self.executor,
+                lambda: self.model.generate_content([prompt, image])
+            )
             
             return response.text
             
         except Exception as e:
-            print(f"❌ Ошибка OCR: {e}")
+            logger.error(f"❌ Ошибка OCR: {e}")
             return f"❌ Ошибка при распознавании текста: {str(e)}"
     
     async def analyze_code(self, image_bytes: bytes) -> Optional[str]:
@@ -128,12 +144,17 @@ class VisionService:
             # Открываем изображение через PIL
             image = Image.open(io.BytesIO(image_bytes))
             
-            response = self.model.generate_content([prompt, image])
+            # Асинхронный вызов через executor
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                self.executor,
+                lambda: self.model.generate_content([prompt, image])
+            )
             
             return response.text
             
         except Exception as e:
-            print(f"❌ Ошибка анализа кода: {e}")
+            logger.error(f"❌ Ошибка анализа кода: {e}")
             return f"❌ Ошибка: {str(e)}"
     
     async def analyze_chart(self, image_bytes: bytes) -> Optional[str]:
@@ -163,11 +184,16 @@ class VisionService:
             # Открываем изображение через PIL
             image = Image.open(io.BytesIO(image_bytes))
             
-            response = self.model.generate_content([prompt, image])
+            # Асинхронный вызов через executor
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                self.executor,
+                lambda: self.model.generate_content([prompt, image])
+            )
             
             return response.text
             
         except Exception as e:
-            print(f"❌ Ошибка анализа графика: {e}")
+            logger.error(f"❌ Ошибка анализа графика: {e}")
             return f"❌ Ошибка: {str(e)}"
 

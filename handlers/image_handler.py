@@ -119,26 +119,9 @@ class ImageHandler:
 Профессиональный анализ:"""
         }
         
-        # Формируем промпт
-        prompt_template = prompts.get(analysis_type, prompts["describe"])
-        question_part = f"\nВопрос пользователя: {user_question}" if user_question else ""
-        prompt = prompt_template.format(result=gemini_result, question_part=question_part)
-        
-        # Отправляем в DeepSeek для улучшения
-        messages = [
-            {
-                "role": "system",
-                "content": "Ты эксперт по улучшению и структурированию информации. Делай ответы понятными, полезными и красиво оформленными."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
-        
-        enhanced_result = await self.ai.chat(messages, temperature=0.7, max_tokens=2000)
-        
-        return enhanced_result if enhanced_result else gemini_result
+        # Gemini дает отличные результаты, дополнительное улучшение через DeepSeek не нужно
+        # Экономия: ~$0.28 за 1000 изображений! 💰
+        return gemini_result
     
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """

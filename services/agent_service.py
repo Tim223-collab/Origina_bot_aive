@@ -140,7 +140,7 @@ class AIAgentService:
             }
         ]
         
-        response = await self.ai.chat(messages, temperature=0.7, max_tokens=300)
+        response = await self.ai.chat(messages, temperature=0.7, max_tokens=150)  # Оптимизация: 300→150
         
         if response and response.strip() != "SKIP":
             return response
@@ -174,7 +174,7 @@ class AIAgentService:
             {"role": "user", "content": prompt}
         ]
         
-        response = await self.ai.chat(messages, temperature=0.3, max_tokens=200, json_mode=True)
+        response = await self.ai.chat(messages, temperature=0.3, max_tokens=120, json_mode=True)  # Оптимизация: 200→120
         
         if response:
             import json
@@ -436,7 +436,7 @@ class AIAgentService:
         ]
         
         try:
-            response = await self.ai.chat(messages, temperature=0.3, max_tokens=500, json_mode=True)
+            response = await self.ai.chat(messages, temperature=0.3, max_tokens=300, json_mode=True)  # Оптимизация: 500→300
             
             if response:
                 import json

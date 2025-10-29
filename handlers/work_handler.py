@@ -7,11 +7,11 @@ from telegram.constants import ChatAction
 from datetime import datetime
 
 from database import Database
-from services import WorkSiteParser
+from services.work_parser_service import WorkParserService
 
 
 class WorkHandler:
-    def __init__(self, db: Database, parser: WorkSiteParser):
+    def __init__(self, db: Database, parser: WorkParserService):
         self.db = db
         self.parser = parser
     
@@ -113,18 +113,18 @@ class WorkHandler:
                 await update.message.reply_text("👥 Работники не найдены.")
                 return
             
-            # Формируем сообщение
-            message = f"👥 **Список работников** ({len(workers)})\n\n"
+            # Формируем сообщение с HTML форматированием
+            message = f"👥 <b>Список работников</b> ({len(workers)})\n\n"
             
             for worker in workers[:20]:  # Ограничиваем 20 для читаемости
                 team_emoji = "💚" if "Good Bunny" in worker.get('team', '') else "💙"
-                message += f"{team_emoji} **{worker['name']}** {worker.get('username', '')}\n"
+                message += f"{team_emoji} <b>{worker['name']}</b> {worker.get('username', '')}\n"
                 message += f"   SFS: {worker.get('sfs', 0)} | SCH: {worker.get('sch', 0)}\n"
             
             if len(workers) > 20:
-                message += f"\n_...и еще {len(workers) - 20} работников_"
+                message += f"\n<i>...и еще {len(workers) - 20} работников</i>"
             
-            await update.message.reply_text(message, parse_mode='Markdown')
+            await update.message.reply_text(message, parse_mode='HTML')
             
         except Exception as e:
             print(f"❌ Ошибка: {e}")
@@ -160,26 +160,27 @@ class WorkHandler:
             
             if not found:
                 await update.message.reply_text(
-                    f"🔍 Работник **{worker_name}** не найден."
+                    f"🔍 Работник <b>{worker_name}</b> не найден.",
+                    parse_mode='HTML'
                 )
                 return
             
-            # Формируем детальную информацию
+            # Формируем детальную информацию с HTML форматированием
             team_emoji = "💚" if "Good Bunny" in found.get('team', '') else "💙"
             
-            message = f"""{team_emoji} **{found['name']}**
+            message = f"""{team_emoji} <b>{found['name']}</b>
             
 👤 Username: {found.get('username', 'Не указан')}
 🏷 Команда: {found.get('team', 'Не указана')}
 📅 Дата отчета: {found.get('date', 'Не указана')}
 
-📊 **Показатели:**
-✅ SFS: **{found.get('sfs', 0)}**
-⏰ Only now: **{found.get('only_now', 0)}**
-📋 SCH: **{found.get('sch', 0)}**
+📊 <b>Показатели:</b>
+✅ SFS: <b>{found.get('sfs', 0)}</b>
+⏰ Only now: <b>{found.get('only_now', 0)}</b>
+📋 SCH: <b>{found.get('sch', 0)}</b>
 """
             
-            await update.message.reply_text(message, parse_mode='Markdown')
+            await update.message.reply_text(message, parse_mode='HTML')
             
         except Exception as e:
             print(f"❌ Ошибка: {e}")

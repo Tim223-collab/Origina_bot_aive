@@ -8,9 +8,14 @@ from datetime import datetime
 
 # Фикс кодировки для Windows
 if sys.platform == "win32":
-    import codecs
-    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
-    sys.stderr = codecs.getwriter("utf-8")(sys.stderr.detach())
+    try:
+        import codecs
+        sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
+        sys.stderr = codecs.getwriter("utf-8")(sys.stderr.detach())
+    except (AttributeError, OSError):
+        # Если detach() не работает (например в IDE или systemd), 
+        # полагаемся на UTF-8 по умолчанию в Python 3.7+
+        pass
 
 from telegram import Update
 from telegram.ext import (
@@ -23,7 +28,7 @@ from telegram.ext import (
 
 import config
 from database import Database
-from services import AIService, MemoryService
+from services import AIService, MemoryService, PersonalityService, ContentLibraryService
 from services.extras_service import ExtrasService
 from services.vision_service import VisionService
 from services.agent_service import AIAgentService
@@ -36,6 +41,7 @@ from handlers.extras_handler import ExtrasHandler
 from handlers.menu_handler import MenuHandler
 from handlers.image_handler import ImageHandler
 from handlers.agent_handler import AgentHandler
+from handlers.content_handler import ContentHandler
 from keyboards import get_main_menu
 
 # Настройка логирования
@@ -68,6 +74,12 @@ class TelegramBot:
         # AI Агент
         self.agent = AIAgentService(self.db, self.ai, self.function_executor)
         
+        # Живая личность AIVE 🤖❤️
+        self.personality = PersonalityService(self.db, self.ai, self.memory)
+        
+        # Умная библиотека контента 📚✨
+        self.content_library = ContentLibraryService(self.db, self.ai, self.vision)
+        
         # Инициализируем обработчики
         self.ai_handler = AIHandler(
             db=self.db, 
@@ -75,7 +87,8 @@ class TelegramBot:
             memory=self.memory,
             extras_service=self.extras,
             parser_service=self.parser,
-            agent_service=self.agent  # Передаем агента для расширенной проактивности
+            agent_service=self.agent,  # Передаем агента для расширенной проактивности
+            personality_service=self.personality  # Передаем личность для отслеживания активности
         )
         self.work_handler = WorkHandler(self.db, self.parser)
         self.utils_handler = UtilsHandler(self.db, self.memory)
@@ -83,6 +96,7 @@ class TelegramBot:
         self.menu_handler = MenuHandler()
         self.image_handler = ImageHandler(self.vision, self.ai)
         self.agent_handler = AgentHandler(self.agent)
+        self.content_handler = ContentHandler(self.db, self.content_library)
         
         self.app = None
     
@@ -93,10 +107,8 @@ class TelegramBot:
         # Проверяем конфиг
         config.validate_config()
         
-        # Инициализируем БД синхронно
-        import asyncio
-        asyncio.run(self.db.init_db())
-        logger.info("✅ База данных инициализирована")
+        # БД будет инициализирована асинхронно при запуске
+        # НЕ используем asyncio.run() здесь - это создаёт вложенный event loop на Windows
         
         # Создаем приложение
         self.app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
@@ -119,7 +131,14 @@ class TelegramBot:
                 interval=3600,  # Каждый час
                 first=300  # Первая проверка через 5 минут
             )
-            logger.info("✅ Job queue настроена")
+            
+            # Добавляем задачу проверки живой личности AIVE 🤖❤️
+            self.app.job_queue.run_repeating(
+                self.check_personality,
+                interval=1800,  # Каждые 30 минут (с учетом рандома 20% = ~каждые 2.5 часа)
+                first=600  # Первая проверка через 10 минут
+            )
+            logger.info("✅ Job queue настроена (напоминания, агент, личность)")
         else:
             logger.warning("⚠️ Job queue недоступна - фоновые задачи отключены")
         
@@ -191,19 +210,47 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("smart_remind", self.agent_handler.smart_reminder))
         self.app.add_handler(CommandHandler("smart_note", self.agent_handler.smart_note))
         
-        # Обработчик фото (ВАЖНО: добавляем ПЕРЕД обработчиком текста)
+        # Библиотека контента 📚✨
+        self.app.add_handler(CommandHandler("save", self.content_handler.handle_save_request))
+        self.app.add_handler(CommandHandler("find", self.content_handler.find_command))
+        self.app.add_handler(CommandHandler("library", self.content_handler.library_command))
+        self.app.add_handler(CommandHandler("categories", self.content_handler.categories_command))
+        
+        # Callback handlers для библиотеки контента
+        from telegram.ext import CallbackQueryHandler
+        self.app.add_handler(CallbackQueryHandler(
+            self.content_handler.handle_title_callback,
+            pattern="^content_"
+        ))
+        
+        # Callback для автосохранения
+        self.app.add_handler(CallbackQueryHandler(
+            self.content_handler.handle_autosave_callback,
+            pattern="^autosave_"
+        ))
+        
+        # Обработчик фото (ВАЖНО: сначала проверяем библиотеку контента, потом image_handler)
+        # Сначала библиотека контента (если в режиме сохранения)
         self.app.add_handler(
             MessageHandler(
                 filters.PHOTO & filters.User(user_id=config.ALLOWED_USER_IDS),
-                self.image_handler.handle_photo
+                self._handle_photo_router  # Роутер который решает куда передать
             )
         )
         
-        # Обработчик обычных текстовых сообщений (ИИ диалоги)
+        # Обработчик документов для библиотеки
+        self.app.add_handler(
+            MessageHandler(
+                filters.Document.ALL & filters.User(user_id=config.ALLOWED_USER_IDS),
+                self._handle_document_router
+            )
+        )
+        
+        # Обработчик обычных текстовых сообщений (сначала проверка библиотеки, потом ИИ)
         self.app.add_handler(
             MessageHandler(
                 filters.TEXT & ~filters.COMMAND & filters.User(user_id=config.ALLOWED_USER_IDS),
-                self.ai_handler.handle_message
+                self._handle_text_router
             )
         )
         
@@ -240,6 +287,114 @@ class TelegramBot:
             parse_mode='Markdown',
             reply_markup=get_main_menu()
         )
+    
+    async def _handle_photo_router(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Роутер для фото - решает куда передать (библиотека или image_handler)
+        """
+        # Проверяем режим сохранения или пользовательский заголовок
+        if context.user_data.get('waiting_for_content') or context.user_data.get('waiting_for_custom_title'):
+            # Передаем в библиотеку контента
+            saved = await self.content_handler.handle_image_for_library(update, context)
+            if saved:
+                return  # Обработано
+        
+        # Иначе передаем в обычный image_handler
+        await self.image_handler.handle_photo(update, context)
+        
+        # После обработки - проверяем нужно ли автосохранить
+        photo = update.message.photo[-1]
+        caption = update.message.caption or ""
+        
+        # Скачиваем фото для анализа и сохранения
+        file = await context.bot.get_file(photo.file_id)
+        image_bytes = await file.download_as_bytearray()
+        
+        suggested = await self.content_handler.auto_suggest_save(
+            update, context,
+            content_type="image",
+            caption=caption,
+            file_id=photo.file_id,
+            image_bytes=bytes(image_bytes)
+        )
+        # Если предложение показано - всё, иначе продолжаем обычную обработку
+    
+    async def _handle_document_router(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Роутер для документов - решает куда передать
+        """
+        # Проверяем режим сохранения
+        if context.user_data.get('waiting_for_content'):
+            saved = await self.content_handler.handle_document_for_library(update, context)
+            if saved:
+                return  # Обработано
+        
+        # Автопредложение сохранения документов
+        document = update.message.document
+        suggested = await self.content_handler.auto_suggest_save(
+            update, context,
+            content_type="document",
+            file_name=document.file_name,
+            file_id=document.file_id
+        )
+        
+        if not suggested:
+            # Если не предложили сохранить - показываем обычное сообщение
+            await update.message.reply_text(
+                "📄 Получил документ!\n\n"
+                "Чтобы сохранить в библиотеку, используй /save и отправь документ заново."
+            )
+    
+    async def _handle_text_router(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Роутер для текста - решает куда передать (библиотека или AI)
+        """
+        # Проверяем пользовательский заголовок
+        if context.user_data.get('waiting_for_custom_title'):
+            saved = await self.content_handler.handle_custom_title(update, context)
+            if saved:
+                return  # Обработано
+        
+        # Проверяем режим сохранения или автосохранение ссылок
+        text = update.message.text
+        url = self.content_handler.extract_url_from_text(text)
+        
+        if context.user_data.get('waiting_for_content'):
+            if url:
+                # Сохраняем как ссылку
+                saved = await self.content_handler.handle_link_for_library(update, context, url)
+                if saved:
+                    return
+            else:
+                # Сохраняем как текст/код
+                saved = await self.content_handler.handle_text_for_library(update, context)
+                if saved:
+                    return
+        
+        # Автопредложение для длинных текстов или ссылок
+        if url:
+            # Предлагаем сохранить ссылку
+            suggested = await self.content_handler.auto_suggest_save(
+                update, context,
+                content_type="link",
+                text=text,
+                url=url
+            )
+            if suggested:
+                return  # Показали предложение, не передаем в AI
+        
+        elif len(text) > 200:
+            # Длинный текст - может быть важным
+            suggested = await self.content_handler.auto_suggest_save(
+                update, context,
+                content_type="text",
+                text=text,
+                text_content=text
+            )
+            # Даже если предложили сохранить, продолжаем обработку через AI
+        
+        # Передаем в обычный AI handler
+        await self.ai_handler.handle_message(update, context)
     
     async def error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик ошибок"""
@@ -299,16 +454,67 @@ class TelegramBot:
         except Exception as e:
             logger.error(f"❌ Ошибка проверки AI агента: {e}")
     
+    async def check_personality(self, context: ContextTypes.DEFAULT_TYPE):
+        """Проверяет нужно ли отправить живое спонтанное сообщение (job)"""
+        try:
+            import random
+            
+            # Проверяем для всех разрешенных пользователей
+            for user_id in config.ALLOWED_USER_IDS:
+                try:
+                    # Рандомный шанс 20% отправить сообщение (чтобы не спамить)
+                    if random.random() > 0.2:
+                        continue
+                    
+                    # Проверяем неактивность
+                    inactivity_msg = await self.personality.generate_inactivity_message(user_id)
+                    if inactivity_msg:
+                        logger.info(f"💭 AIVE (неактивность): отправляю сообщение пользователю {user_id}")
+                        await context.bot.send_message(
+                            chat_id=user_id,
+                            text=inactivity_msg
+                        )
+                        logger.info(f"✅ Сообщение о неактивности отправлено")
+                        continue
+                    
+                    # Генерируем спонтанное сообщение
+                    spontaneous_msg = await self.personality.generate_spontaneous_message(user_id)
+                    if spontaneous_msg:
+                        logger.info(f"💭 AIVE (спонтанное): отправляю сообщение пользователю {user_id}")
+                        await context.bot.send_message(
+                            chat_id=user_id,
+                            text=spontaneous_msg
+                        )
+                        logger.info(f"✅ Спонтанное сообщение отправлено")
+                        
+                except Exception as e:
+                    logger.error(f"❌ Ошибка проверки личности для пользователя {user_id}: {e}")
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка проверки личности AIVE: {e}")
+    
     def run(self):
         """Запускает бота"""
         try:
-            # Создаем новый event loop для Windows
-            if sys.platform == "win32":
-                import asyncio
+            # Инициализируем БД асинхронно перед запуском
+            async def init_db_async():
+                await self.db.init_db()
+                logger.info("✅ База данных инициализирована")
+            
+            # Получаем существующий event loop или создаём новый
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_closed():
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+            except RuntimeError:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
             
-            # Запускаем polling (он сам управляет loop)
+            # Инициализируем БД
+            loop.run_until_complete(init_db_async())
+            
+            # Запускаем polling (он сам управляет event loop)
             self.app.run_polling(
                 allowed_updates=Update.ALL_TYPES,
                 drop_pending_updates=True

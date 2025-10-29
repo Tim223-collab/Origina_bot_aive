@@ -20,9 +20,16 @@ class WorkParserService:
     """Сервис для парсинга отчетов работников с веб-панели"""
     
     def __init__(self):
-        self.base_url = config.WORK_SITE_URL or "http://91.228.153.202:8000"
-        self.username = config.WORK_SITE_USERNAME or "Timofey"
-        self.password = config.WORK_SITE_PASSWORD or "admin123"
+        # Убираем hardcoded credentials - обязательно должны быть в .env
+        self.base_url = config.WORK_SITE_URL
+        self.username = config.WORK_SITE_USERNAME
+        self.password = config.WORK_SITE_PASSWORD
+        
+        # Проверяем что credentials установлены
+        if not all([self.base_url, self.username, self.password]):
+            logger.warning("⚠️ WORK_SITE_URL, USERNAME или PASSWORD не установлены в .env")
+        
+        self.playwright = None  # Сохраняем playwright instance
         self.browser: Optional[Browser] = None
         self.screenshots_dir = config.DATA_DIR / "screenshots"
         self.screenshots_dir.mkdir(exist_ok=True)
@@ -68,9 +75,10 @@ class WorkParserService:
     async def _init_browser(self):
         """Инициализация браузера Playwright"""
         if not self.browser:
-            playwright = await async_playwright().start()
+            # Сохраняем playwright instance для правильного закрытия
+            self.playwright = await async_playwright().start()
             # Для Linux сервера - используем chromium в headless режиме
-            self.browser = await playwright.chromium.launch(
+            self.browser = await self.playwright.chromium.launch(
                 headless=True,
                 args=[
                     '--no-sandbox',
@@ -83,11 +91,17 @@ class WorkParserService:
             logger.info("✅ Playwright браузер запущен (headless mode)")
     
     async def _close_browser(self):
-        """Закрытие браузера"""
+        """Закрытие браузера и playwright instance"""
         if self.browser:
             await self.browser.close()
             self.browser = None
             logger.info("🔒 Playwright браузер закрыт")
+        
+        # ВАЖНО: Закрываем playwright instance чтобы освободить ресурсы
+        if self.playwright:
+            await self.playwright.stop()
+            self.playwright = None
+            logger.info("🔒 Playwright instance остановлен")
     
     async def _login(self, page: Page) -> bool:
         """Авторизация на сайте"""

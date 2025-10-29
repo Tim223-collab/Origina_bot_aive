@@ -328,7 +328,8 @@ class FunctionExecutor:
         """Найти заметки"""
         query = args.get('query', '')
         
-        notes = await self.db.search_notes(user_id, query)
+        # Используем правильный метод get_notes с параметром search
+        notes = await self.db.get_notes(user_id, search=query)
         
         if not notes:
             return f"❌ Заметок с '{query}' не найдено"
@@ -336,7 +337,7 @@ class FunctionExecutor:
         result = f"📝 Найдено заметок: {len(notes)}\n\n"
         for note in notes[:5]:  # Первые 5
             result += f"#{note['id']}"
-            if note['title']:
+            if note.get('title'):
                 result += f" {note['title']}"
             result += f"\n{note['content'][:100]}...\n\n"
         

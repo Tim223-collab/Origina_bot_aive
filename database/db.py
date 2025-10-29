@@ -255,4 +255,210 @@ class Database:
                 UPDATE reminders SET completed = 1 WHERE id = ?
             """, (reminder_id,))
             await db.commit()
+    
+    async def get_reminders(self, user_id: int) -> List[Dict[str, Any]]:
+        """Получает все напоминания пользователя (включая выполненные)"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("""
+                SELECT id, text, remind_at, completed, created_at
+                FROM reminders
+                WHERE user_id = ?
+                ORDER BY remind_at DESC
+            """, (user_id,)) as cursor:
+                rows = await cursor.fetchall()
+                reminders = []
+                for row in rows:
+                    reminder = dict(row)
+                    # Парсим дату обратно в datetime объект
+                    if reminder['remind_at']:
+                        reminder['remind_at'] = datetime.fromisoformat(reminder['remind_at'])
+                    if reminder['created_at']:
+                        reminder['created_at'] = datetime.fromisoformat(reminder['created_at'])
+                    reminders.append(reminder)
+                return reminders
+    
+    # === CONTENT LIBRARY (Умная база знаний) ===
+    
+    async def save_content(
+        self, 
+        user_id: int,
+        content_type: str,
+        title: str = None,
+        description: str = None,
+        category: str = None,
+        file_id: str = None,
+        file_path: str = None,
+        url: str = None,
+        text_content: str = None,
+        metadata: dict = None
+    ) -> int:
+        """
+        Сохраняет контент в библиотеку
+        
+        Args:
+            user_id: ID пользователя
+            content_type: image, text, code, link, video, document, audio
+            title: Название (от пользователя)
+            description: Описание (AI generated)
+            category: Категория (funny, useful, maps, work, personal, etc.)
+            file_id: Telegram file_id (для файлов)
+            file_path: Локальный путь (если сохранен на диск)
+            url: URL (для ссылок)
+            text_content: Текстовый контент
+            metadata: JSON метаданные (теги, язык кода, source и т.д.)
+            
+        Returns:
+            ID созданной записи
+        """
+        metadata_json = json.dumps(metadata or {})
+        
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("""
+                INSERT INTO content_library 
+                (user_id, content_type, title, description, category, 
+                 file_id, file_path, url, text_content, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (user_id, content_type, title, description, category,
+                  file_id, file_path, url, text_content, metadata_json))
+            
+            await db.commit()
+            return cursor.lastrowid
+    
+    async def get_content(
+        self, 
+        user_id: int, 
+        content_id: int = None,
+        content_type: str = None,
+        category: str = None,
+        search: str = None,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """
+        Получает контент из библиотеки с фильтрацией
+        
+        Args:
+            user_id: ID пользователя
+            content_id: ID конкретного контента
+            content_type: Фильтр по типу
+            category: Фильтр по категории
+            search: Поиск по названию/описанию
+            limit: Лимит результатов
+            
+        Returns:
+            Список контента
+        """
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            
+            query = "SELECT * FROM content_library WHERE user_id = ?"
+            params = [user_id]
+            
+            if content_id:
+                query += " AND id = ?"
+                params.append(content_id)
+            
+            if content_type:
+                query += " AND content_type = ?"
+                params.append(content_type)
+            
+            if category:
+                query += " AND category = ?"
+                params.append(category)
+            
+            if search:
+                query += " AND (title LIKE ? OR description LIKE ? OR text_content LIKE ?)"
+                search_pattern = f"%{search}%"
+                params.extend([search_pattern, search_pattern, search_pattern])
+            
+            query += " ORDER BY created_at DESC LIMIT ?"
+            params.append(limit)
+            
+            async with db.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
+                result = []
+                for row in rows:
+                    item = dict(row)
+                    # Парсим metadata обратно в dict
+                    if item.get('metadata'):
+                        try:
+                            item['metadata'] = json.loads(item['metadata'])
+                        except:
+                            item['metadata'] = {}
+                    result.append(item)
+                return result
+    
+    async def update_content(
+        self,
+        content_id: int,
+        user_id: int,
+        title: str = None,
+        description: str = None,
+        category: str = None,
+        metadata: dict = None
+    ):
+        """Обновляет контент в библиотеке"""
+        async with aiosqlite.connect(self.db_path) as db:
+            updates = []
+            params = []
+            
+            if title is not None:
+                updates.append("title = ?")
+                params.append(title)
+            
+            if description is not None:
+                updates.append("description = ?")
+                params.append(description)
+            
+            if category is not None:
+                updates.append("category = ?")
+                params.append(category)
+            
+            if metadata is not None:
+                updates.append("metadata = ?")
+                params.append(json.dumps(metadata))
+            
+            if updates:
+                updates.append("updated_at = CURRENT_TIMESTAMP")
+                query = f"UPDATE content_library SET {', '.join(updates)} WHERE id = ? AND user_id = ?"
+                params.extend([content_id, user_id])
+                
+                await db.execute(query, params)
+                await db.commit()
+    
+    async def delete_content(self, content_id: int, user_id: int):
+        """Удаляет контент из библиотеки"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "DELETE FROM content_library WHERE id = ? AND user_id = ?",
+                (content_id, user_id)
+            )
+            await db.commit()
+    
+    async def get_categories(self, user_id: int) -> List[str]:
+        """Получает список всех категорий пользователя"""
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute("""
+                SELECT DISTINCT category 
+                FROM content_library 
+                WHERE user_id = ? AND category IS NOT NULL
+                ORDER BY category
+            """, (user_id,)) as cursor:
+                rows = await cursor.fetchall()
+                return [row[0] for row in rows]
+    
+    async def get_content_stats(self, user_id: int) -> Dict[str, int]:
+        """Получает статистику по контенту пользователя"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("""
+                SELECT 
+                    content_type,
+                    COUNT(*) as count
+                FROM content_library
+                WHERE user_id = ?
+                GROUP BY content_type
+            """, (user_id,)) as cursor:
+                rows = await cursor.fetchall()
+                return {row['content_type']: row['count'] for row in rows}
 

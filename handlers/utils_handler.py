@@ -169,24 +169,31 @@ class UtilsHandler:
     
     async def remind_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
-        /remind <минуты> <текст> - создает напоминание
-        Пример: /remind 30 Проверить почту
+        /remind <минуты|время> <текст> - создает напоминание
+        Поддерживает как минуты, так и естественный язык
+        
+        Примеры: 
+        - /remind 30 Проверить почту
+        - /remind завтра в 9 утра Встреча
+        - /remind через 2 часа Позвонить
         """
         user = update.effective_user
         
         if len(context.args) < 2:
             await update.message.reply_text(
-                "⏰ **Создать напоминание:**\n"
-                "`/remind <минуты> <текст>`\n\n"
-                "Примеры:\n"
-                "`/remind 30 Проверить почту`\n"
-                "`/remind 60 Созвониться с Иваном`\n"
-                "`/remind 1 Тест` - тестовое напоминание",
-                parse_mode='Markdown'
+                "⏰ <b>Создать напоминание:</b>\n"
+                "<code>/remind &lt;время&gt; &lt;текст&gt;</code>\n\n"
+                "<b>Примеры:</b>\n"
+                "• <code>/remind 30 Проверить почту</code>\n"
+                "• <code>/remind завтра в 9 утра Встреча</code>\n"
+                "• <code>/remind через 2 часа Позвонить</code>\n"
+                "• <code>/remind 23 октября в 14:00 День рождения</code>",
+                parse_mode='HTML'
             )
             return
         
         try:
+            # Пробуем распарсить как число минут (старый формат)
             minutes = int(context.args[0])
             text = " ".join(context.args[1:])
             
@@ -194,25 +201,126 @@ class UtilsHandler:
             from datetime import timezone
             remind_at = datetime.now(timezone.utc) + timedelta(minutes=minutes)
             
-            reminder_id = await self.db.add_reminder(user.id, text, remind_at)
-            
-            # Для отображения конвертируем в локальное время
-            import pytz
-            ukraine_tz = pytz.timezone('Europe/Kiev')
-            local_time = remind_at.astimezone(ukraine_tz)
-            
-            await update.message.reply_text(
-                f"⏰ Напомню через {minutes} минут!\n\n"
-                f"📝 {text}\n"
-                f"🕐 {local_time.strftime('%H:%M')} (Киев)\n"
-                f"🆔 Напоминание #{reminder_id}",
-                parse_mode='Markdown'
-            )
-            
-            print(f"✅ Создано напоминание #{reminder_id}: {text} на {remind_at.isoformat()}")
-            
         except ValueError:
-            await update.message.reply_text("❌ Неверный формат. Первым аргументом должно быть число минут.")
+            # Не число - используем AI для парсинга естественного языка
+            full_text = " ".join(context.args)
+            await update.message.reply_text("🤔 Анализирую время...")
+            
+            result = await self._parse_reminder_with_ai(full_text, user.id)
+            
+            if not result:
+                await update.message.reply_text(
+                    "❌ Не смог понять время. Попробуй:\n"
+                    "• <code>/remind 30 текст</code> (минуты)\n"
+                    "• <code>/remind завтра в 10:00 текст</code>\n"
+                    "• <code>/remind через 2 часа текст</code>",
+                    parse_mode='HTML'
+                )
+                return
+            
+            remind_at, text = result
+        
+        # Создаём напоминание
+        reminder_id = await self.db.add_reminder(user.id, text, remind_at)
+        
+        # Для отображения конвертируем в локальное время
+        import pytz
+        ukraine_tz = pytz.timezone('Europe/Kiev')
+        local_time = remind_at.astimezone(ukraine_tz)
+        
+        # Вычисляем разницу во времени
+        now_ukraine = datetime.now(ukraine_tz)
+        time_delta = local_time - now_ukraine
+        
+        if time_delta.days > 0:
+            time_str = f"через {time_delta.days}д {time_delta.seconds // 3600}ч"
+        elif time_delta.seconds >= 3600:
+            time_str = f"через {time_delta.seconds // 3600}ч {(time_delta.seconds % 3600) // 60}мин"
+        else:
+            time_str = f"через {time_delta.seconds // 60}мин"
+        
+        await update.message.reply_text(
+            f"⏰ <b>Напоминание создано!</b>\n\n"
+            f"📝 {text}\n"
+            f"🕐 {local_time.strftime('%d.%m.%Y %H:%M')} (Киев)\n"
+            f"⏱ {time_str}\n"
+            f"🆔 #{reminder_id}",
+            parse_mode='HTML'
+        )
+        
+        print(f"✅ Создано напоминание #{reminder_id}: {text} на {remind_at.isoformat()}")
+    
+    async def _parse_reminder_with_ai(self, text: str, user_id: int):
+        """
+        Парсит время из естественного языка через AI
+        
+        Returns:
+            tuple: (datetime, текст_напоминания) или None
+        """
+        from datetime import timezone
+        import pytz
+        
+        # Текущее время в Киеве для контекста
+        ukraine_tz = pytz.timezone('Europe/Kiev')
+        now = datetime.now(ukraine_tz)
+        
+        prompt = f"""Сейчас: {now.strftime('%d.%m.%Y %H:%M')} (Киев, Украина)
+День недели: {now.strftime('%A')}
+
+Пользователь написал: "{text}"
+
+Извлеки:
+1. Когда напомнить (дата и время)
+2. Текст напоминания
+
+Верни ТОЛЬКО JSON (без markdown):
+{{
+    "minutes_from_now": число_минут_от_текущего_времени,
+    "reminder_text": "текст напоминания"
+}}
+
+Примеры:
+- "завтра в 9 утра Встреча" → {{"minutes_from_now": 945, "reminder_text": "Встреча"}}
+- "через 2 часа Позвонить" → {{"minutes_from_now": 120, "reminder_text": "Позвонить"}}
+- "23 октября в 14:00 ДР" → {{"minutes_from_now": (рассчитай от текущего времени), "reminder_text": "ДР"}}
+
+Если не можешь понять - верни {{"error": "причина"}}"""
+
+        try:
+            # Используем AI для парсинга
+            messages = [
+                {"role": "system", "content": "Ты парсишь время из естественного языка. Отвечай ТОЛЬКО JSON, без комментариев."},
+                {"role": "user", "content": prompt}
+            ]
+            
+            from services import AIService
+            ai = AIService()
+            response = await ai.chat(messages, temperature=0.2, max_tokens=100, json_mode=True)  # Оптимизация: 200→100
+            
+            if not response:
+                return None
+            
+            import json
+            result = json.loads(response)
+            
+            if "error" in result:
+                print(f"❌ AI не смог распарсить время: {result['error']}")
+                return None
+            
+            minutes = result.get("minutes_from_now")
+            reminder_text = result.get("reminder_text")
+            
+            if not minutes or not reminder_text:
+                return None
+            
+            # Вычисляем время напоминания в UTC
+            remind_at = datetime.now(timezone.utc) + timedelta(minutes=int(minutes))
+            
+            return (remind_at, reminder_text)
+            
+        except Exception as e:
+            print(f"❌ Ошибка парсинга времени через AI: {e}")
+            return None
     
     # === СИСТЕМА ===
     

@@ -14,11 +14,12 @@ import config
 
 class AIHandler:
     def __init__(self, db: Database, ai: AIService, memory: MemoryService, 
-                 extras_service=None, parser_service=None, agent_service=None):
+                 extras_service=None, parser_service=None, agent_service=None, personality_service=None):
         self.db = db
         self.ai = ai
         self.memory = memory
         self.agent = agent_service  # AI Агент для расширенной проактивности
+        self.personality = personality_service  # Живая личность для отслеживания активности
         
         # Function executor для выполнения функций
         self.function_executor = FunctionExecutor(
@@ -34,6 +35,10 @@ class AIHandler:
         """
         user = update.effective_user
         message_text = update.message.text
+        
+        # Обновляем активность пользователя для живой личности
+        if self.personality:
+            self.personality.update_user_activity(user.id)
         
         # Проверяем не является ли это кнопкой меню
         from handlers.menu_handler import MenuHandler
@@ -112,7 +117,7 @@ class AIHandler:
             messages=messages,
             functions=AVAILABLE_FUNCTIONS,  # Передаем доступные функции
             temperature=0.7,
-            max_tokens=2000
+            max_tokens=800  # Оптимизация: 2000→800 (-60% токенов!)
         )
         
         if not response:
@@ -171,8 +176,16 @@ class AIHandler:
                     else:
                         print(f"⚠️ Скриншоты не найдены в {screenshots_dir}")
                 
-                # Показываем результат пользователю (с HTML если есть теги)
-                parse_mode = 'HTML' if '<b>' in function_result or '<i>' in function_result else None
+                # Показываем результат пользователю (определяем формат)
+                # Проверяем на HTML теги
+                if '<b>' in function_result or '<i>' in function_result or '<code>' in function_result:
+                    parse_mode = 'HTML'
+                # Проверяем на Markdown
+                elif '**' in function_result or '__' in function_result or '`' in function_result:
+                    parse_mode = 'Markdown'
+                else:
+                    parse_mode = None
+                
                 await update.message.reply_text(function_result, parse_mode=parse_mode)
                 
                 # Добавляем в БД как сообщение ассистента
@@ -210,7 +223,7 @@ class AIHandler:
                     final_response = await self.ai.chat(
                         messages=messages,
                         temperature=0.7,
-                        max_tokens=150  # Еще короче
+                        max_tokens=120  # Оптимизация: 150→120 для краткости
                     )
                     
                     if final_response and isinstance(final_response, str) and len(final_response) > 10:
@@ -243,26 +256,48 @@ class AIHandler:
                 final_response = await self.ai.chat(
                     messages=messages,
                     temperature=0.7,
-                    max_tokens=1000
+                    max_tokens=200  # Оптимизация: 1000→200 (-80% токенов!)
                 )
                 
                 if final_response:
                     await self.db.add_message(user.id, "assistant", final_response)
                     # Если финальный ответ отличается от результата функции, отправляем его
                     if final_response != function_result and len(final_response) > 10:
-                        await update.message.reply_text(final_response)
+                        # Определяем формат
+                        if '<b>' in final_response or '<i>' in final_response or '<code>' in final_response:
+                            parse_mode = 'HTML'
+                        elif '**' in final_response or '__' in final_response or '`' in final_response:
+                            parse_mode = 'Markdown'
+                        else:
+                            parse_mode = None
+                        await update.message.reply_text(final_response, parse_mode=parse_mode)
                 
             else:
-                # Обычный текстовый ответ
+                # Обычный текстовый ответ - определяем формат
+                if '<b>' in response or '<i>' in response or '<code>' in response:
+                    parse_mode = 'HTML'
+                elif '**' in response or '__' in response or '`' in response:
+                    parse_mode = 'Markdown'
+                else:
+                    parse_mode = None
+                
                 await self.db.add_message(user.id, "assistant", response)
-                await update.message.reply_text(response)
+                await update.message.reply_text(response, parse_mode=parse_mode)
                 
         except Exception as e:
             print(f"❌ Ошибка обработки ответа: {e}")
-            # Fallback - отправляем как есть
+            # Fallback - отправляем как есть с определением формата
             if isinstance(response, str):
+                # Определяем формат даже в fallback
+                if '<b>' in response or '<i>' in response or '<code>' in response:
+                    parse_mode = 'HTML'
+                elif '**' in response or '__' in response or '`' in response:
+                    parse_mode = 'Markdown'
+                else:
+                    parse_mode = None
+                
                 await self.db.add_message(user.id, "assistant", response)
-                await update.message.reply_text(response)
+                await update.message.reply_text(response, parse_mode=parse_mode)
             else:
                 await update.message.reply_text(
                     "😔 Произошла ошибка при обработке ответа."

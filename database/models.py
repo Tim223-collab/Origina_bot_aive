@@ -80,6 +80,25 @@ CREATE TABLE IF NOT EXISTS reminders (
 )
 """
 
+CONTENT_LIBRARY_TABLE = """
+CREATE TABLE IF NOT EXISTS content_library (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    content_type TEXT NOT NULL,
+    title TEXT,
+    description TEXT,
+    category TEXT,
+    file_id TEXT,
+    file_path TEXT,
+    url TEXT,
+    text_content TEXT,
+    metadata TEXT DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (user_id)
+)
+"""
+
 ALL_TABLES = [
     USERS_TABLE,
     CONVERSATIONS_TABLE,
@@ -87,5 +106,6 @@ ALL_TABLES = [
     NOTES_TABLE,
     WORK_STATS_TABLE,
     REMINDERS_TABLE,
+    CONTENT_LIBRARY_TABLE,
 ]
 
