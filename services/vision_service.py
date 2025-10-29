@@ -1,7 +1,8 @@
 """
 Сервис для работы с изображениями через Google Gemini
+Использует НОВЫЙ SDK google-genai
 """
-import google.generativeai as genai
+from google import genai
 from PIL import Image
 import io
 import os
@@ -18,7 +19,8 @@ logger = logging.getLogger(__name__)
 class VisionService:
     """
     Анализ изображений через Google Gemini Flash
-    Использует стабильный SDK от Google
+    Использует новый Google GenAI SDK
+    Документация: https://ai.google.dev/gemini-api/docs/quickstart
     """
     
     def __init__(self, api_key: str = None):
@@ -26,16 +28,15 @@ class VisionService:
         self.executor = ThreadPoolExecutor(max_workers=2)  # Для асинхронных вызовов
         
         if self.api_key:
-            # Настраиваем API
-            genai.configure(api_key=self.api_key)
+            # Используем НОВЫЙ SDK
+            # Передаем API key напрямую в Client
+            self.client = genai.Client(api_key=self.api_key)
             # Используем актуальную модель из официальной документации
-            # https://ai.google.dev/gemini-api/docs/quickstart
             self.model_name = "gemini-1.5-flash"  # Поддерживает изображения
-            self.model = genai.GenerativeModel(self.model_name)
             logger.info(f"✅ Gemini Vision Service инициализирован ({self.model_name})")
         else:
             logger.warning("⚠️ GEMINI_API_KEY не найден в .env")
-            self.model = None
+            self.client = None
             self.model_name = None
     
     async def analyze_image(self, 
@@ -53,7 +54,7 @@ class VisionService:
         Returns:
             Ответ от модели
         """
-        if not self.model:
+        if not self.client:
             return "❌ Gemini API не настроен. Добавь GEMINI_API_KEY в .env"
         
         try:
@@ -68,15 +69,27 @@ class VisionService:
                 else:
                     prompt = "Describe in detail what is shown in this image"
             
-            # Открываем изображение через PIL
-            image = Image.open(io.BytesIO(image_bytes))
+            # Конвертируем в base64 для нового API
+            image_base64 = base64.b64encode(image_bytes).decode('utf-8')
             
-            # Запускаем синхронный вызов Gemini в отдельном потоке
-            # чтобы не блокировать event loop
+            # Новый API - используем client.models.generate_content
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 self.executor,
-                lambda: self.model.generate_content([prompt, image])
+                lambda: self.client.models.generate_content(
+                    model=self.model_name,
+                    contents={
+                        "parts": [
+                            {"text": prompt},
+                            {
+                                "inline_data": {
+                                    "mime_type": "image/jpeg",
+                                    "data": image_base64
+                                }
+                            }
+                        ]
+                    }
+                )
             )
             
             return response.text
@@ -95,7 +108,7 @@ class VisionService:
         Returns:
             Распознанный текст
         """
-        if not self.model:
+        if not self.client:
             return "❌ Gemini API не настроен"
         
         try:
@@ -104,14 +117,22 @@ class VisionService:
 Сохрани форматирование и структуру.
 Если текста нет - напиши "Текст не обнаружен"."""
             
-            # Открываем изображение через PIL
-            image = Image.open(io.BytesIO(image_bytes))
+            # Конвертируем в base64
+            image_base64 = base64.b64encode(image_bytes).decode('utf-8')
             
             # Асинхронный вызов через executor
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 self.executor,
-                lambda: self.model.generate_content([prompt, image])
+                lambda: self.client.models.generate_content(
+                    model=self.model_name,
+                    contents={
+                        "parts": [
+                            {"text": prompt},
+                            {"inline_data": {"mime_type": "image/jpeg", "data": image_base64}}
+                        ]
+                    }
+                )
             )
             
             return response.text
@@ -130,7 +151,7 @@ class VisionService:
         Returns:
             Анализ кода
         """
-        if not self.model:
+        if not self.client:
             return "❌ Gemini API не настроен"
         
         try:
@@ -143,14 +164,22 @@ class VisionService:
 
 Отвечай на русском языке четко и структурировано."""
             
-            # Открываем изображение через PIL
-            image = Image.open(io.BytesIO(image_bytes))
+            # Конвертируем в base64
+            image_base64 = base64.b64encode(image_bytes).decode('utf-8')
             
             # Асинхронный вызов через executor
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 self.executor,
-                lambda: self.model.generate_content([prompt, image])
+                lambda: self.client.models.generate_content(
+                    model=self.model_name,
+                    contents={
+                        "parts": [
+                            {"text": prompt},
+                            {"inline_data": {"mime_type": "image/jpeg", "data": image_base64}}
+                        ]
+                    }
+                )
             )
             
             return response.text
@@ -169,7 +198,7 @@ class VisionService:
         Returns:
             Анализ графика
         """
-        if not self.model:
+        if not self.client:
             return "❌ Gemini API не настроен"
         
         try:
@@ -183,14 +212,22 @@ class VisionService:
 
 Отвечай на русском языке."""
             
-            # Открываем изображение через PIL
-            image = Image.open(io.BytesIO(image_bytes))
+            # Конвертируем в base64
+            image_base64 = base64.b64encode(image_bytes).decode('utf-8')
             
             # Асинхронный вызов через executor
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 self.executor,
-                lambda: self.model.generate_content([prompt, image])
+                lambda: self.client.models.generate_content(
+                    model=self.model_name,
+                    contents={
+                        "parts": [
+                            {"text": prompt},
+                            {"inline_data": {"mime_type": "image/jpeg", "data": image_base64}}
+                        ]
+                    }
+                )
             )
             
             return response.text
