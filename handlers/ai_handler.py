@@ -357,6 +357,28 @@ class AIHandler:
                         await update.message.reply_text(final_response, parse_mode=parse_mode)
                 
             else:
+                # Fallback: если пользователь просил последнее фото, отправляем фото вместо текста
+                import re as _re
+                text_lower = message_text.lower()
+                if _re.search(r"(покажи|отправь|скинь).*(последн|свеж|крайн).*фото|последн.*фото", text_lower):
+                    items = await self.db.get_content(user.id, content_type='image', limit=1)
+                    if items:
+                        item = items[0]
+                        title = item.get('title', 'Без названия')
+                        category = item.get('category', 'other')
+                        caption = f"📸 <b>{title}</b>\n🏷 {category.title()}"
+                        try:
+                            from pathlib import Path
+                            if item.get('file_path') and Path(item['file_path']).exists():
+                                with open(item['file_path'], 'rb') as photo:
+                                    await update.message.reply_photo(photo=photo, caption=caption, parse_mode='HTML')
+                                    return
+                            elif item.get('file_id'):
+                                await context.bot.send_photo(chat_id=update.effective_chat.id, photo=item['file_id'], caption=caption, parse_mode='HTML')
+                                return
+                        except Exception:
+                            pass
+                
                 # Обычный текстовый ответ - определяем формат
                 if '<b>' in response or '<i>' in response or '<code>' in response:
                     parse_mode = 'HTML'
