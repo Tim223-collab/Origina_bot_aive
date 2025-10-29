@@ -121,7 +121,7 @@ class AIHandler:
         print(f"🔍 Проверяю интент: '{message_text}' -> '{text_lower}'")
         
         if re.search(r"(покажи|отправь|скинь).*(последн|свеж|крайн).*фото|последн.*фото", text_lower):
-            print("✅ Найден интент 'показать последнее фото' - обрабатываю без ИИ")
+            print("✅ Найден интент 'показать последнее фото' - отправляю фото + ИИ контекст")
             # Берём последнее сохранённое изображение из библиотеки
             items = await self.db.get_content(user.id, content_type='image', limit=1)
             print(f"📚 Найдено в БД: {len(items)} изображений")
@@ -131,20 +131,49 @@ class AIHandler:
                 print(f"📸 Данные фото: file_path={item.get('file_path')}, file_id={item.get('file_id')}")
                 title = item.get('title', 'Без названия')
                 category = item.get('category', 'other')
-                caption = f"📸 <b>{title}</b>\n🏷 {category.title()}"
+                description = item.get('description', '')
+                
+                # Отправляем фото
                 try:
                     from pathlib import Path
                     if item.get('file_path') and Path(item['file_path']).exists():
                         print(f"📁 Отправляю из файла: {item['file_path']}")
                         with open(item['file_path'], 'rb') as photo:
-                            await update.message.reply_photo(photo=photo, caption=caption, parse_mode='HTML')
+                            await update.message.reply_photo(photo=photo, caption=f"📸 <b>{title}</b>\n🏷 {category.title()}", parse_mode='HTML')
                             print("✅ Фото отправлено успешно!")
-                            return
                     elif item.get('file_id'):
                         print(f"📱 Отправляю по file_id: {item['file_id']}")
-                        await context.bot.send_photo(chat_id=update.effective_chat.id, photo=item['file_id'], caption=caption, parse_mode='HTML')
+                        await context.bot.send_photo(chat_id=update.effective_chat.id, photo=item['file_id'], caption=f"📸 <b>{title}</b>\n🏷 {category.title()}", parse_mode='HTML')
                         print("✅ Фото отправлено по file_id!")
-                        return
+                    
+                    # Теперь ИИ добавляет контекст к фото
+                    ai_context = f"""Пользователь просил показать последнее сохранённое фото. Я отправил фото:
+
+📸 Название: {title}
+🏷 Категория: {category.title()}
+📝 Описание: {description}
+
+Добавь интересный комментарий к этому фото. Будь дружелюбной и полезной. Можешь:
+- Рассказать что интересного на фото
+- Предложить что с ним можно сделать
+- Спросить хочет ли пользователь что-то ещё
+- Дать полезный совет
+
+Отвечай кратко и по-человечески, как AIVE."""
+
+                    # Получаем ответ от ИИ
+                    ai_response = await self.ai.chat(
+                        messages=[{"role": "user", "content": ai_context}],
+                        temperature=0.8,
+                        max_tokens=200
+                    )
+                    
+                    if ai_response:
+                        await update.message.reply_text(ai_response)
+                        await self.db.add_message(user.id, "assistant", ai_response)
+                    
+                    return
+                    
                 except Exception as e:
                     print(f"❌ Ошибка отправки фото: {e}")
                     pass
