@@ -322,7 +322,7 @@ class TelegramBot:
         # Принудительно сохраняем фото в БД (автосохранение)
         try:
             from services.content_library_service import ContentLibraryService
-            content_service = ContentLibraryService(self.db, self.ai_service, self.vision_service)
+            content_service = ContentLibraryService(self.db, self.ai, self.vision)
             
             # Анализируем и сохраняем фото
             content_id, analysis = await content_service.analyze_and_save(

@@ -417,6 +417,18 @@ class AIHandler:
                 else:
                     parse_mode = None
                 
+                # Валидация HTML перед отправкой
+                if parse_mode == 'HTML':
+                    try:
+                        # Простая проверка - если есть незакрытые теги, убираем HTML
+                        if response.count('<b>') != response.count('</b>') or \
+                           response.count('<i>') != response.count('</i>') or \
+                           response.count('<code>') != response.count('</code>'):
+                            print("⚠️ Неправильный HTML, отправляю как текст")
+                            parse_mode = None
+                    except:
+                        parse_mode = None
+                
                 await self.db.add_message(user.id, "assistant", response)
                 await update.message.reply_text(response, parse_mode=parse_mode)
                 
