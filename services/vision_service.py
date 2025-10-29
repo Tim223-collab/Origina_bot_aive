@@ -28,7 +28,8 @@ class VisionService:
         if self.api_key:
             # Настраиваем API
             genai.configure(api_key=self.api_key)
-            self.model_name = "gemini-1.5-flash"  # Стабильная модель с поддержкой изображений
+            # Используем стабильную модель gemini-pro-vision (работает всегда)
+            self.model_name = "gemini-pro-vision"
             self.model = genai.GenerativeModel(self.model_name)
             logger.info(f"✅ Gemini Vision Service инициализирован ({self.model_name})")
         else:
