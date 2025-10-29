@@ -23,10 +23,11 @@ class VisionService:
         self.executor = ThreadPoolExecutor(max_workers=2)
         
         if self.api_key:
-            # Используем СТАРЫЙ SDK (который работал!)
+            # Используем ОБНОВЛЕННЫЙ SDK с новой моделью
             genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel('gemini-pro-vision')
-            logger.info("✅ Gemini Vision Service инициализирован (gemini-pro-vision)")
+            # gemini-pro-vision УСТАРЕЛА! Теперь используем gemini-1.5-flash
+            self.model = genai.GenerativeModel('gemini-1.5-flash')
+            logger.info("✅ Gemini Vision Service инициализирован (gemini-1.5-flash)")
         else:
             logger.warning("⚠️ GEMINI_API_KEY не найден в .env")
             self.model = None
