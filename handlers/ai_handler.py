@@ -420,13 +420,20 @@ class AIHandler:
                 # Валидация HTML перед отправкой
                 if parse_mode == 'HTML':
                     try:
-                        # Простая проверка - если есть незакрытые теги, убираем HTML
-                        if response.count('<b>') != response.count('</b>') or \
-                           response.count('<i>') != response.count('</i>') or \
-                           response.count('<code>') != response.count('</code>'):
-                            print("⚠️ Неправильный HTML, отправляю как текст")
+                        # Проверяем что все теги закрыты
+                        open_tags = response.count('<b>') + response.count('<i>') + response.count('<code>')
+                        close_tags = response.count('</b>') + response.count('</i>') + response.count('</code>')
+                        
+                        if open_tags != close_tags:
+                            print(f"⚠️ Неправильный HTML (открыто: {open_tags}, закрыто: {close_tags}), отправляю как текст")
                             parse_mode = None
-                    except:
+                        else:
+                            # Дополнительная проверка - убираем HTML если слишком много тегов
+                            if open_tags > 10:
+                                print("⚠️ Слишком много HTML тегов, отправляю как текст")
+                                parse_mode = None
+                    except Exception as e:
+                        print(f"⚠️ Ошибка валидации HTML: {e}, отправляю как текст")
                         parse_mode = None
                 
                 await self.db.add_message(user.id, "assistant", response)

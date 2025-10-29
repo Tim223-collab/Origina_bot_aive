@@ -117,7 +117,7 @@ class ContentLibraryService:
             # Используем Gemini для анализа изображения
             vision_result = await self.vision.analyze_image(
                 image_bytes,
-                prompt="Опиши что на изображении. Это карта? Мем? Скриншот? Фото?"
+                question="Опиши что на изображении. Это карта? Мем? Скриншот? Фото?"
             )
             
             # AI категоризация на основе описания от Gemini
