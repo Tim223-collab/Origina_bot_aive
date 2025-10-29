@@ -79,13 +79,16 @@ class ContentLibraryService:
         # Анализируем контент через AI
         analysis = await self._analyze_content(content_type, **kwargs)
         
+        # Убираем image_bytes из kwargs (не нужен для БД)
+        db_kwargs = {k: v for k, v in kwargs.items() if k != 'image_bytes'}
+        
         # Сохраняем в БД
         content_id = await self.db.save_content(
             user_id=user_id,
             content_type=content_type,
             description=analysis.get('description'),
             category=analysis.get('category'),
-            **kwargs
+            **db_kwargs
         )
         
         return content_id, analysis
