@@ -118,27 +118,42 @@ class AIHandler:
         # === Быстрые интенты без ИИ: показать сохранённые фото ===
         import re
         text_lower = message_text.lower()
+        print(f"🔍 Проверяю интент: '{message_text}' -> '{text_lower}'")
+        
         if re.search(r"(покажи|отправь|скинь).*(последн|свеж|крайн).*фото|последн.*фото", text_lower):
+            print("✅ Найден интент 'показать последнее фото' - обрабатываю без ИИ")
             # Берём последнее сохранённое изображение из библиотеки
             items = await self.db.get_content(user.id, content_type='image', limit=1)
+            print(f"📚 Найдено в БД: {len(items)} изображений")
+            
             if items:
                 item = items[0]
+                print(f"📸 Данные фото: file_path={item.get('file_path')}, file_id={item.get('file_id')}")
                 title = item.get('title', 'Без названия')
                 category = item.get('category', 'other')
                 caption = f"📸 <b>{title}</b>\n🏷 {category.title()}"
                 try:
                     from pathlib import Path
                     if item.get('file_path') and Path(item['file_path']).exists():
+                        print(f"📁 Отправляю из файла: {item['file_path']}")
                         with open(item['file_path'], 'rb') as photo:
                             await update.message.reply_photo(photo=photo, caption=caption, parse_mode='HTML')
+                            print("✅ Фото отправлено успешно!")
                             return
                     elif item.get('file_id'):
+                        print(f"📱 Отправляю по file_id: {item['file_id']}")
                         await context.bot.send_photo(chat_id=update.effective_chat.id, photo=item['file_id'], caption=caption, parse_mode='HTML')
+                        print("✅ Фото отправлено по file_id!")
                         return
-                except Exception:
+                except Exception as e:
+                    print(f"❌ Ошибка отправки фото: {e}")
                     pass
                 await update.message.reply_text("⚠️ Не удалось отправить фото. Попробуй ещё раз или сохрани новое.")
                 return
+            else:
+                print("❌ Нет сохранённых изображений в БД")
+        else:
+            print("❌ Интент 'показать фото' не найден, передаю в ИИ")
 
         # === ВЫЗОВ ИИ С FUNCTION CALLING ===
         response = await self.ai.chat(
@@ -360,24 +375,39 @@ class AIHandler:
                 # Fallback: если пользователь просил последнее фото, отправляем фото вместо текста
                 import re as _re
                 text_lower = message_text.lower()
+                print(f"🔄 Fallback проверка: '{message_text}' -> '{text_lower}'")
+                
                 if _re.search(r"(покажи|отправь|скинь).*(последн|свеж|крайн).*фото|последн.*фото", text_lower):
+                    print("✅ Fallback: Найден интент 'показать последнее фото'")
                     items = await self.db.get_content(user.id, content_type='image', limit=1)
+                    print(f"📚 Fallback: Найдено в БД: {len(items)} изображений")
+                    
                     if items:
                         item = items[0]
+                        print(f"📸 Fallback: Данные фото: file_path={item.get('file_path')}, file_id={item.get('file_id')}")
                         title = item.get('title', 'Без названия')
                         category = item.get('category', 'other')
                         caption = f"📸 <b>{title}</b>\n🏷 {category.title()}"
                         try:
                             from pathlib import Path
                             if item.get('file_path') and Path(item['file_path']).exists():
+                                print(f"📁 Fallback: Отправляю из файла: {item['file_path']}")
                                 with open(item['file_path'], 'rb') as photo:
                                     await update.message.reply_photo(photo=photo, caption=caption, parse_mode='HTML')
+                                    print("✅ Fallback: Фото отправлено успешно!")
                                     return
                             elif item.get('file_id'):
+                                print(f"📱 Fallback: Отправляю по file_id: {item['file_id']}")
                                 await context.bot.send_photo(chat_id=update.effective_chat.id, photo=item['file_id'], caption=caption, parse_mode='HTML')
+                                print("✅ Fallback: Фото отправлено по file_id!")
                                 return
-                        except Exception:
+                        except Exception as e:
+                            print(f"❌ Fallback: Ошибка отправки фото: {e}")
                             pass
+                    else:
+                        print("❌ Fallback: Нет сохранённых изображений в БД")
+                else:
+                    print("❌ Fallback: Интент 'показать фото' не найден")
                 
                 # Обычный текстовый ответ - определяем формат
                 if '<b>' in response or '<i>' in response or '<code>' in response:

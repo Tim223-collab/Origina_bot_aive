@@ -519,28 +519,35 @@ class FunctionExecutor:
     async def _show_saved_content(self, user_id: int, args: Dict) -> str:
         """Показать сохранённый контент из библиотеки"""
         query = args.get('query', '')
+        print(f"🔧 Функция show_saved_content вызвана: user_id={user_id}, query='{query}'")
         
         try:
             # Ищем контент в БД
             if query:
                 # Поиск по запросу
                 results = await self.db.get_content(user_id, search=query, limit=10)
+                print(f"🔍 Поиск по запросу '{query}': найдено {len(results)} результатов")
             else:
                 # Показать последние изображения
                 results = await self.db.get_content(user_id, content_type='image', limit=5)
+                print(f"📸 Поиск последних изображений: найдено {len(results)} результатов")
             
             if not results:
                 if query:
+                    print(f"❌ Не найдено по запросу '{query}'")
                     return f"❌ Не найдено сохранённых фото по запросу '{query}'. Попробуй /library чтобы посмотреть все."
                 else:
+                    print("❌ Нет сохранённых фото")
                     return "❌ У тебя пока нет сохранённых фото. Отправь фото и используй /save чтобы сохранить."
             
             # Помечаем что нужно отправить контент (это будет обработано в handler)
             content_ids = [str(item['id']) for item in results[:5]]  # Максимум 5 фото
             result = f"SEND_CONTENT:{','.join(content_ids)}"
+            print(f"📤 Возвращаю SEND_CONTENT: {result}")
             
             return result
             
         except Exception as e:
+            print(f"❌ Ошибка в show_saved_content: {e}")
             return f"❌ Ошибка: {str(e)}"
 
