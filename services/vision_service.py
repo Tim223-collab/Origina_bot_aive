@@ -1,10 +1,9 @@
 """
 Сервис для работы с изображениями через Google Gemini
 """
-from google import genai
+import google.generativeai as genai
 from PIL import Image
 import io
-import base64
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
@@ -24,15 +23,13 @@ class VisionService:
         self.executor = ThreadPoolExecutor(max_workers=2)
         
         if self.api_key:
-            # Используем НОВЫЙ SDK google-genai (уже установлен!)
-            self.client = genai.Client(api_key=self.api_key)
-            # Используем стабильную модель, доступную во всех регионах
-            self.model_name = "gemini-1.5-flash-001"  # Стабильная версия с vision
-            logger.info(f"✅ Gemini Vision Service инициализирован ({self.model_name})")
+            # Используем СТАРЫЙ SDK (который работал!)
+            genai.configure(api_key=self.api_key)
+            self.model = genai.GenerativeModel('gemini-pro-vision')
+            logger.info("✅ Gemini Vision Service инициализирован (gemini-pro-vision)")
         else:
             logger.warning("⚠️ GEMINI_API_KEY не найден в .env")
-            self.client = None
-            self.model_name = None
+            self.model = None
     
     async def analyze_image(self, 
                            image_bytes: bytes, 
@@ -49,7 +46,7 @@ class VisionService:
         Returns:
             Ответ от модели
         """
-        if not self.client:
+        if not self.model:
             return "❌ Gemini API не настроен. Добавь GEMINI_API_KEY в .env"
         
         try:
@@ -64,27 +61,14 @@ class VisionService:
                 else:
                     prompt = "Describe in detail what is shown in this image"
             
-            # Конвертируем в base64 для нового API
-            image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+            # Конвертируем байты в PIL Image
+            image = Image.open(io.BytesIO(image_bytes))
             
-            # Новый API - используем client.models.generate_content
+            # СТАРЫЙ API (который работал!)
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 self.executor,
-                lambda: self.client.models.generate_content(
-                    model=self.model_name,
-                    contents={
-                        "parts": [
-                            {"text": prompt},
-                            {
-                                "inline_data": {
-                                    "mime_type": "image/jpeg",
-                                    "data": image_base64
-                                }
-                            }
-                        ]
-                    }
-                )
+                lambda: self.model.generate_content([prompt, image])
             )
             
             return response.text
@@ -103,7 +87,7 @@ class VisionService:
         Returns:
             Распознанный текст
         """
-        if not self.client:
+        if not self.model:
             return "❌ Gemini API не настроен"
         
         try:
@@ -112,22 +96,14 @@ class VisionService:
 Сохрани форматирование и структуру.
 Если текста нет - напиши "Текст не обнаружен"."""
             
-            # Конвертируем в base64
-            image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+            # Конвертируем в PIL Image
+            image = Image.open(io.BytesIO(image_bytes))
             
             # Асинхронный вызов через executor
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 self.executor,
-                lambda: self.client.models.generate_content(
-                    model=self.model_name,
-                    contents={
-                        "parts": [
-                            {"text": prompt},
-                            {"inline_data": {"mime_type": "image/jpeg", "data": image_base64}}
-                        ]
-                    }
-                )
+                lambda: self.model.generate_content([prompt, image])
             )
             
             return response.text
@@ -146,7 +122,7 @@ class VisionService:
         Returns:
             Анализ кода
         """
-        if not self.client:
+        if not self.model:
             return "❌ Gemini API не настроен"
         
         try:
@@ -159,22 +135,14 @@ class VisionService:
 
 Отвечай на русском языке четко и структурировано."""
             
-            # Конвертируем в base64
-            image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+            # Конвертируем в PIL Image
+            image = Image.open(io.BytesIO(image_bytes))
             
             # Асинхронный вызов через executor
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 self.executor,
-                lambda: self.client.models.generate_content(
-                    model=self.model_name,
-                    contents={
-                        "parts": [
-                            {"text": prompt},
-                            {"inline_data": {"mime_type": "image/jpeg", "data": image_base64}}
-                        ]
-                    }
-                )
+                lambda: self.model.generate_content([prompt, image])
             )
             
             return response.text
@@ -193,7 +161,7 @@ class VisionService:
         Returns:
             Анализ графика
         """
-        if not self.client:
+        if not self.model:
             return "❌ Gemini API не настроен"
         
         try:
@@ -207,22 +175,14 @@ class VisionService:
 
 Отвечай на русском языке."""
             
-            # Конвертируем в base64
-            image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+            # Конвертируем в PIL Image
+            image = Image.open(io.BytesIO(image_bytes))
             
             # Асинхронный вызов через executor
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 self.executor,
-                lambda: self.client.models.generate_content(
-                    model=self.model_name,
-                    contents={
-                        "parts": [
-                            {"text": prompt},
-                            {"inline_data": {"mime_type": "image/jpeg", "data": image_base64}}
-                        ]
-                    }
-                )
+                lambda: self.model.generate_content([prompt, image])
             )
             
             return response.text
