@@ -1,11 +1,9 @@
 """
 Сервис для работы с изображениями через Google Gemini
-Использует НОВЫЙ SDK google-genai
 """
 from google import genai
 from PIL import Image
 import io
-import os
 import base64
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
@@ -18,21 +16,18 @@ logger = logging.getLogger(__name__)
 
 class VisionService:
     """
-    Анализ изображений через Google Gemini Flash
-    Использует новый Google GenAI SDK
-    Документация: https://ai.google.dev/gemini-api/docs/quickstart
+    Анализ изображений через Google Gemini
     """
     
     def __init__(self, api_key: str = None):
         self.api_key = api_key or config.GEMINI_API_KEY
-        self.executor = ThreadPoolExecutor(max_workers=2)  # Для асинхронных вызовов
+        self.executor = ThreadPoolExecutor(max_workers=2)
         
         if self.api_key:
-            # Используем НОВЫЙ SDK
-            # Передаем API key напрямую в Client
+            # Используем НОВЫЙ SDK google-genai (уже установлен!)
             self.client = genai.Client(api_key=self.api_key)
-            # Используем актуальную модель из официальной документации
-            self.model_name = "gemini-1.5-flash"  # Поддерживает изображения
+            # Попробуем разные варианты модели
+            self.model_name = "gemini-2.0-flash-exp"  # Экспериментальная модель
             logger.info(f"✅ Gemini Vision Service инициализирован ({self.model_name})")
         else:
             logger.warning("⚠️ GEMINI_API_KEY не найден в .env")
