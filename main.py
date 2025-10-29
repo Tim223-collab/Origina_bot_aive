@@ -319,6 +319,24 @@ class TelegramBot:
         file_path = images_dir / file_name
         file_path.write_bytes(image_bytes)
         
+        # Принудительно сохраняем фото в БД (автосохранение)
+        try:
+            from services.content_library_service import ContentLibraryService
+            content_service = ContentLibraryService(self.db, self.ai_service, self.vision_service)
+            
+            # Анализируем и сохраняем фото
+            content_id, analysis = await content_service.analyze_and_save(
+                user_id=update.effective_user.id,
+                content_type="image",
+                file_id=photo.file_id,
+                file_path=str(file_path),
+                image_bytes=bytes(image_bytes)
+            )
+            print(f"✅ Фото автосохранено в БД: ID={content_id}, title={analysis.get('suggested_title')}")
+        except Exception as e:
+            print(f"❌ Ошибка автосохранения фото: {e}")
+        
+        # Показываем предложение (если нужно)
         suggested = await self.content_handler.auto_suggest_save(
             update, context,
             content_type="image",
