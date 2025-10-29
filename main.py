@@ -4,7 +4,9 @@
 import asyncio
 import logging
 import sys
+import time
 from datetime import datetime
+from pathlib import Path
 
 # Фикс кодировки для Windows
 if sys.platform == "win32":
@@ -310,11 +312,19 @@ class TelegramBot:
         file = await context.bot.get_file(photo.file_id)
         image_bytes = await file.download_as_bytearray()
         
+        # Сохраняем изображение на диск для постоянного хранения
+        images_dir = config.DATA_DIR / "images"
+        images_dir.mkdir(exist_ok=True)
+        file_name = f"{update.effective_user.id}_{int(time.time())}.jpg"
+        file_path = images_dir / file_name
+        file_path.write_bytes(image_bytes)
+        
         suggested = await self.content_handler.auto_suggest_save(
             update, context,
             content_type="image",
             caption=caption,
             file_id=photo.file_id,
+            file_path=str(file_path),
             image_bytes=bytes(image_bytes)
         )
         # Если предложение показано - всё, иначе продолжаем обычную обработку

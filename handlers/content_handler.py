@@ -6,10 +6,13 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 from telegram.constants import ChatAction
 from typing import Optional, Dict
+from pathlib import Path
 import re
+import time
 
 from database import Database
 from services.content_library_service import ContentLibraryService
+import config
 
 
 # Состояния диалога
@@ -24,6 +27,10 @@ class ContentHandler:
     def __init__(self, db: Database, content_service: ContentLibraryService):
         self.db = db
         self.content = content_service
+        
+        # Папка для хранения изображений
+        self.images_dir = config.DATA_DIR / "images"
+        self.images_dir.mkdir(exist_ok=True)
         
         # Временное хранилище для ожидания названия
         self.pending_content = {}  # {user_id: {content_data, analysis}}
@@ -74,11 +81,17 @@ class ContentHandler:
         file = await context.bot.get_file(photo.file_id)
         image_bytes = await file.download_as_bytearray()
         
+        # Сохраняем изображение на диск
+        file_name = f"{user.id}_{int(time.time())}.jpg"
+        file_path = self.images_dir / file_name
+        file_path.write_bytes(image_bytes)
+        
         # Анализируем и получаем предложение от AI
         content_id, analysis = await self.content.analyze_and_save(
             user_id=user.id,
             content_type="image",
             file_id=photo.file_id,
+            file_path=str(file_path),
             image_bytes=bytes(image_bytes)
         )
         
@@ -461,13 +474,41 @@ class ContentHandler:
             caption += f"\n\n{description[:200]}"
         
         # Отправляем контент по типу
-        if content_type == "image" and item.get('file_id'):
-            await context.bot.send_photo(
-                chat_id=update.effective_chat.id,
-                photo=item['file_id'],
-                caption=caption,
-                parse_mode='HTML'
-            )
+        if content_type == "image":
+            # Приоритет: file_path (локальный файл) > file_id (Telegram)
+            if item.get('file_path') and Path(item['file_path']).exists():
+                # Отправляем из локального файла
+                with open(item['file_path'], 'rb') as photo_file:
+                    await context.bot.send_photo(
+                        chat_id=update.effective_chat.id,
+                        photo=photo_file,
+                        caption=caption,
+                        parse_mode='HTML'
+                    )
+            elif item.get('file_id'):
+                # Пробуем отправить по file_id
+                try:
+                    await context.bot.send_photo(
+                        chat_id=update.effective_chat.id,
+                        photo=item['file_id'],
+                        caption=caption,
+                        parse_mode='HTML'
+                    )
+                except Exception as e:
+                    # Если file_id недоступен (истёк или региональные ограничения)
+                    await update.message.reply_text(
+                        f"{caption}\n\n"
+                        f"⚠️ <b>Изображение недоступно</b>\n"
+                        f"Telegram file_id истёк или недоступен в вашем регионе.",
+                        parse_mode='HTML'
+                    )
+            else:
+                # Нет ни file_path, ни file_id
+                await update.message.reply_text(
+                    f"{caption}\n\n"
+                    f"⚠️ <b>Изображение не найдено</b>",
+                    parse_mode='HTML'
+                )
         
         elif content_type == "text" and item.get('text_content'):
             text = item['text_content']

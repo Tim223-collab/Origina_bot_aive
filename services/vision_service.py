@@ -26,8 +26,8 @@ class VisionService:
         if self.api_key:
             # Используем НОВЫЙ SDK google-genai (уже установлен!)
             self.client = genai.Client(api_key=self.api_key)
-            # Попробуем разные варианты модели
-            self.model_name = "gemini-2.0-flash-exp"  # Экспериментальная модель
+            # Используем стабильную модель, доступную во всех регионах
+            self.model_name = "gemini-1.5-flash-001"  # Стабильная версия с vision
             logger.info(f"✅ Gemini Vision Service инициализирован ({self.model_name})")
         else:
             logger.warning("⚠️ GEMINI_API_KEY не найден в .env")
