@@ -420,7 +420,8 @@ class ContentLibraryService:
         content_type: str,
         text: str = None,
         caption: str = None,
-        file_name: str = None
+        file_name: str = None,
+        **kwargs  # Принимаем любые дополнительные параметры (file_id, image_bytes, url и т.д.)
     ) -> Dict:
         """
         Умное определение - нужно ли сохранить контент автоматически
