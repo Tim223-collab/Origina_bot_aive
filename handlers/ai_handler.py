@@ -176,6 +176,62 @@ class AIHandler:
                     else:
                         print(f"⚠️ Скриншоты не найдены в {screenshots_dir}")
                 
+                # Обработка сохранённого контента из библиотеки
+                elif function_result and function_result.startswith("SEND_CONTENT:"):
+                    print(f"📚 Обнаружен запрос на отправку контента: {function_result}")
+                    # Формат: SEND_CONTENT:id1,id2,id3
+                    content_ids = function_result.replace("SEND_CONTENT:", "").split(",")
+                    
+                    sent_count = 0
+                    for content_id in content_ids:
+                        try:
+                            # Получаем данные контента из БД
+                            content = await self.db.get_content(update.effective_user.id, content_id=int(content_id.strip()))
+                            
+                            if not content:
+                                continue
+                            
+                            item = content[0]  # get_content возвращает список
+                            content_type = item.get('content_type', 'unknown')
+                            title = item.get('title', 'Без названия')
+                            category = item.get('category', 'other')
+                            
+                            caption = f"📸 <b>{title}</b>\n🏷 {category.title()}"
+                            
+                            # Отправляем в зависимости от типа
+                            if content_type == "image":
+                                # Приоритет: file_path > file_id
+                                if item.get('file_path'):
+                                    from pathlib import Path
+                                    file_path = Path(item['file_path'])
+                                    if file_path.exists():
+                                        with open(file_path, 'rb') as photo:
+                                            await update.message.reply_photo(
+                                                photo=photo,
+                                                caption=caption,
+                                                parse_mode='HTML'
+                                            )
+                                        sent_count += 1
+                                elif item.get('file_id'):
+                                    try:
+                                        await context.bot.send_photo(
+                                            chat_id=update.effective_chat.id,
+                                            photo=item['file_id'],
+                                            caption=caption,
+                                            parse_mode='HTML'
+                                        )
+                                        sent_count += 1
+                                    except:
+                                        pass  # file_id истёк
+                        
+                        except Exception as e:
+                            print(f"❌ Ошибка отправки контента {content_id}: {e}")
+                    
+                    if sent_count > 0:
+                        function_result = f"✅ Отправлено фото: {sent_count}"
+                    else:
+                        function_result = "❌ Не удалось отправить фото"
+                
                 # Показываем результат пользователю (определяем формат)
                 # Проверяем на HTML теги
                 if '<b>' in function_result or '<i>' in function_result or '<code>' in function_result:

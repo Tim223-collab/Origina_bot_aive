@@ -180,6 +180,20 @@ AVAILABLE_FUNCTIONS = [
             },
             "required": ["worker_name"]
         }
+    },
+    {
+        "name": "show_saved_content",
+        "description": "Показать сохранённое фото/карту/изображение из библиотеки контента. Используй когда пользователь просит показать/отправить сохранённое фото, карту, изображение (например: 'покажи последнее фото', 'отправь сохранённую карту', 'дай фото'). Можно искать по названию или показать последнее.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Название или описание контента для поиска (опционально, если не указано - показать последнее)"
+                }
+            },
+            "required": []
+        }
     }
 ]
 
@@ -238,6 +252,9 @@ class FunctionExecutor:
             
             elif function_name == "send_worker_screenshot":
                 return await self._send_worker_screenshot(user_id, arguments)
+            
+            elif function_name == "show_saved_content":
+                return await self._show_saved_content(user_id, arguments)
             
             else:
                 return f"❌ Неизвестная функция: {function_name}"
@@ -493,6 +510,34 @@ class FunctionExecutor:
             
             # Помечаем что нужно отправить фото (это будет обработано в handler)
             result = f"SEND_PHOTOS:{worker_name}|{len(screenshots)}"
+            
+            return result
+            
+        except Exception as e:
+            return f"❌ Ошибка: {str(e)}"
+    
+    async def _show_saved_content(self, user_id: int, args: Dict) -> str:
+        """Показать сохранённый контент из библиотеки"""
+        query = args.get('query', '')
+        
+        try:
+            # Ищем контент в БД
+            if query:
+                # Поиск по запросу
+                results = await self.db.get_content(user_id, search=query, limit=10)
+            else:
+                # Показать последние изображения
+                results = await self.db.get_content(user_id, content_type='image', limit=5)
+            
+            if not results:
+                if query:
+                    return f"❌ Не найдено сохранённых фото по запросу '{query}'. Попробуй /library чтобы посмотреть все."
+                else:
+                    return "❌ У тебя пока нет сохранённых фото. Отправь фото и используй /save чтобы сохранить."
+            
+            # Помечаем что нужно отправить контент (это будет обработано в handler)
+            content_ids = [str(item['id']) for item in results[:5]]  # Максимум 5 фото
+            result = f"SEND_CONTENT:{','.join(content_ids)}"
             
             return result
             
