@@ -63,15 +63,29 @@ SYSTEM_PROMPT = """Ты личный ИИ-помощник пользовате�
 def validate_config():
     """Проверяет наличие обязательных параметров"""
     errors = []
+    warnings = []
     
+    # Обязательные
     if not TELEGRAM_BOT_TOKEN:
         errors.append("TELEGRAM_BOT_TOKEN не установлен")
     
     if not ALLOWED_USER_IDS:
         errors.append("ALLOWED_USER_IDS не установлен")
     
+    # AI API - хотя бы один должен быть
+    if not DEEPSEEK_API_KEY and not GEMINI_API_KEY:
+        errors.append("Нужен хотя бы один AI API ключ (DEEPSEEK_API_KEY или GEMINI_API_KEY)")
+    
+    # Рекомендации
+    if not GEMINI_API_KEY:
+        warnings.append("⚠️ GEMINI_API_KEY не установлен - рекомендуется (бесплатно!)")
+    
     if not DEEPSEEK_API_KEY:
-        errors.append("DEEPSEEK_API_KEY не установлен")
+        warnings.append("⚠️ DEEPSEEK_API_KEY не установлен - нужен для reasoning mode")
+    
+    # Показываем предупреждения
+    if warnings:
+        print("\n".join(warnings))
     
     if errors:
         raise ValueError(f"Ошибки конфигурации:\n" + "\n".join(f"- {e}" for e in errors))

@@ -203,11 +203,12 @@ class FunctionExecutor:
     Выполняет функции, которые запрашивает ИИ
     """
     
-    def __init__(self, db, memory_service, extras_service, parser_service):
+    def __init__(self, db, memory_service, extras_service, parser_service, dtek_service=None):
         self.db = db
         self.memory = memory_service
         self.extras = extras_service
         self.parser = parser_service
+        self.dtek = dtek_service  # ДТЕК мониторинг
     
     async def execute_function(self, function_name: str, arguments: Dict[str, Any], user_id: int) -> str:
         """
@@ -255,6 +256,22 @@ class FunctionExecutor:
             
             elif function_name == "show_saved_content":
                 return await self._show_saved_content(user_id, arguments)
+            
+            # ДТЕК функции
+            elif function_name == "check_power_status":
+                return await self._check_power_status(user_id, arguments)
+            
+            elif function_name == "get_power_schedule_today":
+                return await self._get_power_schedule_today(user_id, arguments)
+            
+            elif function_name == "get_power_schedule_week":
+                return await self._get_power_schedule_week(user_id, arguments)
+            
+            elif function_name == "setup_power_address":
+                return await self._setup_power_address(user_id, arguments)
+            
+            elif function_name == "start_power_monitoring":
+                return await self._start_power_monitoring(user_id, arguments)
             
             else:
                 return f"❌ Неизвестная функция: {function_name}"
@@ -515,6 +532,194 @@ class FunctionExecutor:
             
         except Exception as e:
             return f"❌ Ошибка: {str(e)}"
+    
+    # ============ ДТЕК ФУНКЦИИ ============
+    
+    async def _check_power_status(self, user_id: int, args: Dict) -> str:
+        """Проверить есть ли свет сейчас"""
+        if not self.dtek:
+            return "❌ ДТЕК сервис недоступен"
+        
+        # Проверяем настроен ли адрес
+        if not self.dtek.get_user_address(user_id):
+            return """⚠️ Адрес не настроен для проверки отключений.
+
+Скажи мне свой адрес, например:
+"Мой адрес: м. Дніпро, вул. Калинова 47, черга 1.2"
+
+Или используй команду: /dtek_setup"""
+        
+        try:
+            result = await self.dtek.get_current_status(user_id)
+            
+            if not result.get("success"):
+                return f"❌ Не удалось проверить: {result.get('error', 'Неизвестная ошибка')}"
+            
+            message = result.get("message", "")
+            current_time = result.get("current_time", "")
+            has_shutdown = result.get("has_shutdown_now", False)
+            today_shutdowns = result.get("today_shutdowns", [])
+            
+            response = f"""🔌 **Статус Электроэнергии**
+
+⏰ **Сейчас:** {current_time}
+
+{message}
+"""
+            
+            if today_shutdowns:
+                response += f"\n📅 **График на сегодня:**\n"
+                for time_slot in today_shutdowns:
+                    icon = "⚡" if has_shutdown else "🕐"
+                    response += f"{icon} {time_slot}\n"
+            else:
+                response += "\n✅ **Сегодня отключений не запланировано!**"
+            
+            return response
+        
+        except Exception as e:
+            return f"❌ Ошибка проверки: {str(e)}"
+    
+    async def _get_power_schedule_today(self, user_id: int, args: Dict) -> str:
+        """Получить график на сегодня"""
+        if not self.dtek:
+            return "❌ ДТЕК сервис недоступен"
+        
+        if not self.dtek.get_user_address(user_id):
+            return "⚠️ Адрес не настроен. Скажи мне где ты живёшь."
+        
+        try:
+            result = await self.dtek.get_today_schedule(user_id)
+            
+            if not result.get("success"):
+                return f"❌ Ошибка: {result.get('error')}"
+            
+            schedule = result.get("schedule")
+            warnings = result.get("warnings", [])
+            
+            response = "📅 **График Отключений на Сегодня**\n\n"
+            
+            if warnings:
+                for warning in warnings[:1]:
+                    response += f"⚠️ {warning[:150]}...\n\n"
+            
+            if schedule and schedule.get("has_shutdowns"):
+                response += f"**Дата:** {schedule.get('date_text', '')}\n\n"
+                response += "⚡ **Отключения:**\n"
+                for time_slot in schedule.get("shutdown_times", []):
+                    response += f"• {time_slot}\n"
+            else:
+                response += "✅ **Отключений не запланировано!**\n"
+            
+            response += "\n💡 Совет: Могу присылать уведомления - скажи 'включи уведомления об отключениях'"
+            
+            return response
+        
+        except Exception as e:
+            return f"❌ Ошибка: {str(e)}"
+    
+    async def _get_power_schedule_week(self, user_id: int, args: Dict) -> str:
+        """Получить график на неделю"""
+        if not self.dtek:
+            return "❌ ДТЕК сервис недоступен"
+        
+        if not self.dtek.get_user_address(user_id):
+            return "⚠️ Адрес не настроен. Скажи мне где ты живёшь."
+        
+        try:
+            result = await self.dtek.get_week_schedule(user_id)
+            
+            if not result.get("success"):
+                return f"❌ Ошибка: {result.get('error')}"
+            
+            schedule = result.get("schedule", [])
+            address = result.get("address", {})
+            
+            response = "📅 **График Отключений на Неделю**\n\n"
+            response += f"📍 {address.get('street')}, {address.get('building')}\n\n"
+            
+            for day in schedule:
+                date_text = day.get("date_text", "")
+                has_shutdowns = day.get("has_shutdowns", False)
+                shutdown_times = day.get("shutdown_times", [])
+                
+                if has_shutdowns:
+                    response += f"**{date_text}**\n"
+                    for time_slot in shutdown_times[:3]:
+                        response += f"⚡ {time_slot}\n"
+                    if len(shutdown_times) > 3:
+                        response += f"   ...и еще {len(shutdown_times) - 3}\n"
+                    response += "\n"
+                else:
+                    response += f"**{date_text}** ✅\n\n"
+            
+            return response
+        
+        except Exception as e:
+            return f"❌ Ошибка: {str(e)}"
+    
+    async def _setup_power_address(self, user_id: int, args: Dict) -> str:
+        """Настроить адрес для мониторинга"""
+        if not self.dtek:
+            return "❌ ДТЕК сервис недоступен"
+        
+        city = args.get("city", "")
+        street = args.get("street", "")
+        building = args.get("building", "")
+        queue = args.get("queue")
+        
+        if not all([city, street, building]):
+            return "❌ Не хватает данных. Укажи город, улицу и номер дома."
+        
+        # Добавляем префиксы если нужно
+        if not city.startswith("м."):
+            city = f"м. {city}"
+        
+        if not street.startswith("вул."):
+            street = f"вул. {street}"
+        
+        # Сохраняем адрес
+        self.dtek.set_user_address(user_id, city, street, building, queue)
+        
+        response = f"""✅ **Адрес сохранен!**
+
+📍 {city}
+📍 {street}, {building}
+"""
+        
+        if queue:
+            response += f"⚡ Черга: {queue}\n"
+        
+        response += "\n**Теперь могу:**\n"
+        response += "• Проверять свет по запросу\n"
+        response += "• Показывать график отключений\n"
+        response += "• Присылать уведомления (скажи 'включи уведомления')"
+        
+        return response
+    
+    async def _start_power_monitoring(self, user_id: int, args: Dict) -> str:
+        """Запустить мониторинг отключений"""
+        if not self.dtek:
+            return "❌ ДТЕК сервис недоступен"
+        
+        if not self.dtek.get_user_address(user_id):
+            return "⚠️ Сначала нужно настроить адрес. Скажи мне где ты живёшь."
+        
+        # Проверяем не запущен ли уже
+        if user_id in self.dtek.monitoring_tasks:
+            return "✅ Мониторинг уже работает! Я уже слежу за отключениями и буду уведомлять."
+        
+        # Запуск мониторинга будет через handler (нужен bot instance)
+        return """✅ Хорошо, запускаю мониторинг!
+
+🔔 **Я буду уведомлять тебя:**
+• За 15-30 минут до отключения
+• При изменениях в графике
+• С эмоциональной поддержкой 💙
+
+⏰ Проверяю каждые 30 минут
+
+Чтобы остановить, скажи "останови уведомления" или используй /dtek_monitor_stop"""
     
     async def _show_saved_content(self, user_id: int, args: Dict) -> str:
         """Показать сохранённый контент из библиотеки"""

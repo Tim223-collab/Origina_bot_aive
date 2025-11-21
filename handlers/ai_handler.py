@@ -21,6 +21,9 @@ class AIHandler:
         self.agent = agent_service  # AI Агент для расширенной проактивности
         self.personality = personality_service  # Живая личность для отслеживания активности
         
+        # Сохраняем ссылку на бота для ДТЕК мониторинга
+        self.bot_context = None
+        
         # Function executor для выполнения функций
         self.function_executor = FunctionExecutor(
             db=db,
@@ -35,6 +38,9 @@ class AIHandler:
         """
         user = update.effective_user
         message_text = update.message.text
+        
+        # Сохраняем context для ДТЕК мониторинга
+        self.bot_context = context
         
         # Обновляем активность пользователя для живой личности
         if self.personality:
@@ -161,11 +167,12 @@ class AIHandler:
 
 Отвечай кратко и по-человечески, как AIVE."""
 
-                    # Получаем ответ от ИИ
+                    # Получаем ответ от ИИ (с эмоциональным интеллектом 💙)
                     ai_response = await self.ai.chat(
                         messages=[{"role": "user", "content": ai_context}],
                         temperature=0.8,
-                        max_tokens=200
+                        max_tokens=200,
+                        user_id=user.id
                     )
                     
                     if ai_response:
@@ -184,12 +191,13 @@ class AIHandler:
         else:
             print("❌ Интент 'показать фото' не найден, передаю в ИИ")
 
-        # === ВЫЗОВ ИИ С FUNCTION CALLING ===
+        # === ВЫЗОВ ИИ С FUNCTION CALLING + ЭМОЦИОНАЛЬНЫЙ ИНТЕЛЛЕКТ ===
         response = await self.ai.chat(
             messages=messages,
             functions=AVAILABLE_FUNCTIONS,  # Передаем доступные функции
             temperature=0.7,
-            max_tokens=800  # Оптимизация: 2000→800 (-60% токенов!)
+            max_tokens=800,  # Оптимизация: 2000→800 (-60% токенов!)
+            user_id=user.id  # 💙 Эмоциональная адаптация
         )
         
         if not response:
@@ -351,7 +359,8 @@ class AIHandler:
                     final_response = await self.ai.chat(
                         messages=messages,
                         temperature=0.7,
-                        max_tokens=120  # Оптимизация: 150→120 для краткости
+                        max_tokens=120,  # Оптимизация: 150→120 для краткости
+                        user_id=user.id  # 💙 Эмоциональная адаптация
                     )
                     
                     if final_response and isinstance(final_response, str) and len(final_response) > 10:
@@ -380,11 +389,12 @@ class AIHandler:
                     "content": function_result
                 })
                 
-                # Получаем финальный ответ от ИИ (с учетом результата функции)
+                # Получаем финальный ответ от ИИ (с учетом результата функции + эмоции 💙)
                 final_response = await self.ai.chat(
                     messages=messages,
                     temperature=0.7,
-                    max_tokens=200  # Оптимизация: 1000→200 (-80% токенов!)
+                    max_tokens=200,  # Оптимизация: 1000→200 (-80% токенов!)
+                    user_id=user.id  # 💙 Эмоциональная адаптация
                 )
                 
                 if final_response:

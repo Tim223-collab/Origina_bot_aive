@@ -30,10 +30,12 @@ from telegram.ext import (
 
 import config
 from database import Database
-from services import AIService, MemoryService, PersonalityService, ContentLibraryService
+from services import HybridAIService, MemoryService, PersonalityService, ContentLibraryService
 from services.extras_service import ExtrasService
 from services.vision_service import VisionService
 from services.agent_service import AIAgentService
+from services.goals_service import GoalsService
+from services.dtek_monitor_service import DTEKMonitorService
 from services.function_tools import FunctionExecutor
 from services.work_parser_service import get_parser_service
 from handlers.ai_handler import AIHandler
@@ -44,6 +46,9 @@ from handlers.menu_handler import MenuHandler
 from handlers.image_handler import ImageHandler
 from handlers.agent_handler import AgentHandler
 from handlers.content_handler import ContentHandler
+from handlers.emotion_handler import EmotionHandler
+from handlers.goals_handler import GoalsHandler
+from handlers.dtek_handler import DTEKHandler
 from keyboards import get_main_menu
 
 # Настройка логирования
@@ -53,13 +58,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Глобальный instance бота для доступа из handlers
+bot_instance = None
+
 
 class TelegramBot:
     """Главный класс бота"""
     
     def __init__(self):
+        global bot_instance
+        bot_instance = self  # Сохраняем глобальный instance
+        
         self.db = Database(config.DATABASE_PATH)
-        self.ai = AIService()
+        self.ai = HybridAIService(db=self.db)  # 🎭 Гибридный AI с эмоциональным интеллектом
         self.memory = MemoryService(self.db, self.ai)
         self.parser = get_parser_service()  # Новый Playwright парсер
         self.extras = ExtrasService()
@@ -70,7 +81,8 @@ class TelegramBot:
             db=self.db,
             memory_service=self.memory,
             extras_service=self.extras,
-            parser_service=self.parser
+            parser_service=self.parser,
+            dtek_service=self.dtek  # Добавляем ДТЕК
         )
         
         # AI Агент
@@ -81,6 +93,12 @@ class TelegramBot:
         
         # Умная библиотека контента 📚✨
         self.content_library = ContentLibraryService(self.db, self.ai, self.vision)
+        
+        # Система целей и трекинга 🎯
+        self.goals = GoalsService(self.db, self.ai)
+        
+        # ДТЕК мониторинг отключений 🔌
+        self.dtek = DTEKMonitorService(self.db)
         
         # Инициализируем обработчики
         self.ai_handler = AIHandler(
@@ -99,6 +117,15 @@ class TelegramBot:
         self.image_handler = ImageHandler(self.vision, self.ai)
         self.agent_handler = AgentHandler(self.agent)
         self.content_handler = ContentHandler(self.db, self.content_library)
+        
+        # Эмоциональный интеллект 💙
+        self.emotion_handler = EmotionHandler(self.ai.emotional)
+        
+        # Цели и трекинг 🎯
+        self.goals_handler = GoalsHandler(self.goals)
+        
+        # ДТЕК мониторинг 🔌
+        self.dtek_handler = DTEKHandler(self.dtek)
         
         self.app = None
     
@@ -217,6 +244,29 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("find", self.content_handler.find_command))
         self.app.add_handler(CommandHandler("library", self.content_handler.library_command))
         self.app.add_handler(CommandHandler("categories", self.content_handler.categories_command))
+        
+        # Эмоциональный интеллект 💙
+        self.app.add_handler(CommandHandler("emotion", self.emotion_handler.emotion_status))
+        self.app.add_handler(CommandHandler("test_emotion", self.emotion_handler.test_emotion))
+        
+        # Цели и трекинг 🎯
+        self.app.add_handler(CommandHandler("goal", self.goals_handler.create_goal_command))
+        self.app.add_handler(CommandHandler("goals", self.goals_handler.goals_list_command))
+        self.app.add_handler(CommandHandler("goal_progress", self.goals_handler.goal_progress_command))
+        self.app.add_handler(CommandHandler("goal_complete", self.goals_handler.goal_complete_command))
+        self.app.add_handler(CommandHandler("goal_details", self.goals_handler.goal_details_command))
+        self.app.add_handler(CommandHandler("goal_pause", self.goals_handler.goal_pause_command))
+        self.app.add_handler(CommandHandler("goal_resume", self.goals_handler.goal_resume_command))
+        self.app.add_handler(CommandHandler("goals_stats", self.goals_handler.goals_stats_command))
+        
+        # ДТЕК мониторинг 🔌
+        self.app.add_handler(CommandHandler("dtek_setup", self.dtek_handler.setup_command))
+        self.app.add_handler(CommandHandler("dtek_now", self.dtek_handler.check_now_command))
+        self.app.add_handler(CommandHandler("dtek_today", self.dtek_handler.today_schedule_command))
+        self.app.add_handler(CommandHandler("dtek_week", self.dtek_handler.week_schedule_command))
+        self.app.add_handler(CommandHandler("dtek_monitor_start", self.dtek_handler.start_monitor_command))
+        self.app.add_handler(CommandHandler("dtek_monitor_stop", self.dtek_handler.stop_monitor_command))
+        self.app.add_handler(CommandHandler("dtek_monitor_status", self.dtek_handler.monitor_status_command))
         
         # Callback handlers для библиотеки контента
         from telegram.ext import CallbackQueryHandler
