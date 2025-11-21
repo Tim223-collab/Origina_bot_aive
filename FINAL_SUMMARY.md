@@ -402,7 +402,25 @@ ParserRegistry.register(MyParser)
 
 ## 🚀 Готов к Использованию!
 
-**Запуск:**
+**Запуск на Ubuntu Сервере (Рекомендуется):**
+```bash
+# Автоматическая установка
+chmod +x install_ubuntu.sh
+./install_ubuntu.sh
+
+# Настрой .env
+nano .env
+
+# Запусти
+sudo systemctl start aive-bot
+
+# Проверь
+sudo systemctl status aive-bot
+```
+
+**📖 Подробная инструкция:** [docs/UBUNTU_DEPLOY.md](docs/UBUNTU_DEPLOY.md)
+
+**Локальный запуск (Windows/Mac):**
 ```bash
 # Установи зависимости
 pip install -r requirements.txt

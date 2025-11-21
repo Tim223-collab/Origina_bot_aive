@@ -159,6 +159,32 @@ AIVE **запоминает**:
 - Telegram Bot Token
 - API ключи (DeepSeek, Google Gemini, OpenAI)
 
+### 🐧 Ubuntu/Linux Сервер (Рекомендуется)
+
+**Автоматическая установка:**
+```bash
+# Клонируй проект
+git clone <your-repo>
+cd Origina_bot_aive
+
+# Запусти скрипт установки
+chmod +x install_ubuntu.sh
+./install_ubuntu.sh
+
+# Отредактируй .env с API ключами
+nano .env
+
+# Запусти бота
+sudo systemctl start aive-bot
+
+# Проверь статус
+sudo systemctl status aive-bot
+```
+
+**📖 Подробная инструкция:** [docs/UBUNTU_DEPLOY.md](docs/UBUNTU_DEPLOY.md)
+
+### 💻 Windows/Mac (Локальная разработка)
+
 ### 1. Клонирование репозитория
 ```bash
 git clone <your-repo>
@@ -201,12 +227,21 @@ DATABASE_PATH=data/bot.db
 ```
 
 ### 4. Запуск
+
+**Ubuntu/Linux Сервер:**
+```bash
+sudo systemctl start aive-bot    # Запуск
+sudo systemctl status aive-bot   # Статус
+sudo journalctl -u aive-bot -f   # Логи
+```
+
+**Windows/Mac:**
 ```bash
 # Windows
 START_BOT.bat
 
 # Linux/Mac
-./start.sh
+python3 main.py
 ```
 
 ---
