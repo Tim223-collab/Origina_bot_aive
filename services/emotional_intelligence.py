@@ -367,10 +367,10 @@ class EmotionalIntelligence:
     
     async def _save_to_db(self, user_id: int, record: Dict):
         """Сохраняет эмоциональную запись в БД"""
-        # TODO: реализовать когда добавим таблицу emotional_history
-        pass
+        if self.db and hasattr(self.db, 'save_emotion'):
+            await self.db.save_emotion(user_id, record)
     
-    def get_emotion_summary(self, user_id: int, hours: int = 24) -> Dict:
+    async def get_emotion_summary(self, user_id: int, hours: int = 24) -> Dict:
         """
         Получает сводку эмоций за период
         
@@ -387,21 +387,31 @@ class EmotionalIntelligence:
                 "count": 10
             }
         """
-        if user_id not in self.emotion_history:
-            return {
-                "dominant_emotion": "neutral",
-                "emotions_distribution": {},
-                "average_intensity": 0.5,
-                "trend": "stable",
-                "count": 0
-            }
+        # Пробуем получить из БД
+        recent_records = []
+        if self.db and hasattr(self.db, 'get_emotion_history'):
+            try:
+                recent_records = await self.db.get_emotion_history(user_id, limit=100, hours=hours)
+            except Exception:
+                pass
         
-        # Фильтруем по времени
-        cutoff_time = datetime.now() - timedelta(hours=hours)
-        recent_records = [
-            r for r in self.emotion_history[user_id]
-            if datetime.fromisoformat(r["timestamp"]) > cutoff_time
-        ]
+        # Fallback на локальный кэш
+        if not recent_records:
+            if user_id not in self.emotion_history:
+                return {
+                    "dominant_emotion": "neutral",
+                    "emotions_distribution": {},
+                    "average_intensity": 0.5,
+                    "trend": "stable",
+                    "count": 0
+                }
+            
+            # Фильтруем по времени
+            cutoff_time = datetime.now() - timedelta(hours=hours)
+            recent_records = [
+                r for r in self.emotion_history[user_id]
+                if datetime.fromisoformat(r.get("timestamp", r.get("created_at", ""))) > cutoff_time
+            ]
         
         if not recent_records:
             return {

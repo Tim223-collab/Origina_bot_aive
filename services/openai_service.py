@@ -1,7 +1,8 @@
 """
-Сервис для работы с OpenAI ChatGPT API
+Сервис для работы с OpenAI ChatGPT API (v1.0+)
+Обновлено для нового API формата
 """
-import openai
+from openai import AsyncOpenAI
 import os
 from typing import List, Dict, Optional
 import config
@@ -9,7 +10,7 @@ import config
 
 class OpenAIService:
     """
-    OpenAI ChatGPT API клиент
+    OpenAI ChatGPT API клиент (обновлённый для openai v1.0+)
     
     Модели:
     - gpt-4o: Лучшее качество, быстрый ($5/$15 per 1M)
@@ -22,13 +23,14 @@ class OpenAIService:
         self.model_name = model_name
         
         if self.api_key:
-            openai.api_key = self.api_key
+            self.client = AsyncOpenAI(api_key=self.api_key)
         else:
+            self.client = None
             print("⚠️ OPENAI_API_KEY не найден - ChatGPT недоступен")
     
     def is_available(self) -> bool:
         """Проверяет доступность OpenAI API"""
-        return self.api_key is not None
+        return self.client is not None
     
     async def chat(
         self,
@@ -53,7 +55,7 @@ class OpenAIService:
             return None
         
         try:
-            response = await openai.ChatCompletion.acreate(
+            response = await self.client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
                 temperature=temperature,
@@ -181,7 +183,7 @@ JSON:"""
                 }
             ]
             
-            response = await openai.ChatCompletion.acreate(
+            response = await self.client.chat.completions.create(
                 model="gpt-4o",  # Vision требует gpt-4o
                 messages=messages,
                 max_tokens=1000
@@ -211,4 +213,3 @@ JSON:"""
             {"role": "user", "content": text}
         ]
         return await self.chat(messages, temperature=0.2, max_tokens=500)
-

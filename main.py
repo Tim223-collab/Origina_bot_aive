@@ -76,29 +76,29 @@ class TelegramBot:
         self.extras = ExtrasService()
         self.vision = VisionService()
         
-        # Function executor для агента
+        # ДТЕК мониторинг отключений 🔌 (инициализируем ДО FunctionExecutor!)
+        self.dtek = DTEKMonitorService(self.db)
+        
+        # Система целей и трекинга 🎯
+        self.goals = GoalsService(self.db, self.ai)
+        
+        # Умная библиотека контента 📚✨
+        self.content_library = ContentLibraryService(self.db, self.ai, self.vision)
+        
+        # Живая личность AIVE 🤖❤️
+        self.personality = PersonalityService(self.db, self.ai, self.memory)
+        
+        # Function executor для агента (после всех сервисов!)
         self.function_executor = FunctionExecutor(
             db=self.db,
             memory_service=self.memory,
             extras_service=self.extras,
             parser_service=self.parser,
-            dtek_service=self.dtek  # Добавляем ДТЕК
+            dtek_service=self.dtek
         )
         
         # AI Агент
         self.agent = AIAgentService(self.db, self.ai, self.function_executor)
-        
-        # Живая личность AIVE 🤖❤️
-        self.personality = PersonalityService(self.db, self.ai, self.memory)
-        
-        # Умная библиотека контента 📚✨
-        self.content_library = ContentLibraryService(self.db, self.ai, self.vision)
-        
-        # Система целей и трекинга 🎯
-        self.goals = GoalsService(self.db, self.ai)
-        
-        # ДТЕК мониторинг отключений 🔌
-        self.dtek = DTEKMonitorService(self.db)
         
         # Инициализируем обработчики
         self.ai_handler = AIHandler(
@@ -108,7 +108,8 @@ class TelegramBot:
             extras_service=self.extras,
             parser_service=self.parser,
             agent_service=self.agent,  # Передаем агента для расширенной проактивности
-            personality_service=self.personality  # Передаем личность для отслеживания активности
+            personality_service=self.personality,  # Передаем личность для отслеживания активности
+            function_executor=self.function_executor  # Передаем единый FunctionExecutor с ДТЕК
         )
         self.work_handler = WorkHandler(self.db, self.parser)
         self.utils_handler = UtilsHandler(self.db, self.memory)

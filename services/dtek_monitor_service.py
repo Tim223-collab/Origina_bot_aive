@@ -74,7 +74,7 @@ class DTEKMonitorService:
             }
         """
         if not self.parser:
-            address = self.user_addresses.get(user_id)
+            address = await self.get_user_address(user_id)
             if not address:
                 return {
                     "success": False,
@@ -105,7 +105,7 @@ class DTEKMonitorService:
     async def get_today_schedule(self, user_id: int) -> Dict:
         """Получает график на сегодня"""
         if not self.parser:
-            address = self.user_addresses.get(user_id)
+            address = await self.get_user_address(user_id)
             if not address:
                 return {
                     "success": False,
@@ -135,7 +135,7 @@ class DTEKMonitorService:
     async def get_week_schedule(self, user_id: int) -> Dict:
         """Получает график на неделю"""
         if not self.parser:
-            address = self.user_addresses.get(user_id)
+            address = await self.get_user_address(user_id)
             if not address:
                 return {
                     "success": False,
@@ -165,7 +165,7 @@ class DTEKMonitorService:
     async def check_for_changes(self, user_id: int) -> Dict:
         """Проверяет изменения в графике"""
         if not self.parser:
-            address = self.user_addresses.get(user_id)
+            address = await self.get_user_address(user_id)
             if not address:
                 return {
                     "success": False,
@@ -192,7 +192,7 @@ class DTEKMonitorService:
                 await self.parser.close()
                 self.parser = None
     
-    def set_user_address(
+    async def set_user_address(
         self,
         user_id: int,
         city: str,
@@ -200,18 +200,48 @@ class DTEKMonitorService:
         building: str,
         queue: str = None
     ):
-        """Сохраняет адрес пользователя"""
-        self.user_addresses[user_id] = {
+        """Сохраняет адрес пользователя в БД и кэш"""
+        address = {
             "city": city,
             "street": street,
             "building": building,
             "queue": queue
         }
+        
+        # Кэшируем локально
+        self.user_addresses[user_id] = address
+        
+        # Сохраняем в БД
+        if self.db and hasattr(self.db, 'save_dtek_address'):
+            try:
+                await self.db.save_dtek_address(user_id, city, street, building, queue)
+            except Exception as e:
+                logger.error(f"❌ Error saving DTEK address to DB: {e}")
+        
         logger.info(f"✅ Address saved for user {user_id}: {street}, {building}")
     
-    def get_user_address(self, user_id: int) -> Optional[Dict]:
-        """Получает адрес пользователя"""
-        return self.user_addresses.get(user_id)
+    async def get_user_address(self, user_id: int) -> Optional[Dict]:
+        """Получает адрес пользователя из кэша или БД"""
+        # Сначала проверяем кэш
+        if user_id in self.user_addresses:
+            return self.user_addresses[user_id]
+        
+        # Загружаем из БД
+        if self.db and hasattr(self.db, 'get_dtek_address'):
+            try:
+                address = await self.db.get_dtek_address(user_id)
+                if address:
+                    self.user_addresses[user_id] = {
+                        "city": address['city'],
+                        "street": address['street'],
+                        "building": address['building'],
+                        "queue": address.get('queue')
+                    }
+                    return self.user_addresses[user_id]
+            except Exception as e:
+                logger.error(f"❌ Error loading DTEK address from DB: {e}")
+        
+        return None
     
     async def start_monitoring(self, user_id: int, bot, check_interval: int = 3600):
         """
@@ -230,6 +260,14 @@ class DTEKMonitorService:
             self._monitoring_loop(user_id, bot, check_interval)
         )
         self.monitoring_tasks[user_id] = task
+        
+        # Сохраняем состояние в БД
+        if self.db and hasattr(self.db, 'set_dtek_monitoring'):
+            try:
+                await self.db.set_dtek_monitoring(user_id, True)
+            except Exception as e:
+                logger.error(f"❌ Error saving monitoring state: {e}")
+        
         logger.info(f"✅ Monitoring started for user {user_id}")
     
     async def stop_monitoring(self, user_id: int):
@@ -238,6 +276,14 @@ class DTEKMonitorService:
             task = self.monitoring_tasks[user_id]
             task.cancel()
             del self.monitoring_tasks[user_id]
+            
+            # Сохраняем состояние в БД
+            if self.db and hasattr(self.db, 'set_dtek_monitoring'):
+                try:
+                    await self.db.set_dtek_monitoring(user_id, False)
+                except Exception as e:
+                    logger.error(f"❌ Error saving monitoring state: {e}")
+            
             logger.info(f"⏸️ Monitoring stopped for user {user_id}")
     
     async def _monitoring_loop(self, user_id: int, bot, check_interval: int):

@@ -20,13 +20,15 @@ GoalStatus = Literal["active", "completed", "failed", "paused"]
 class GoalsService:
     """
     Сервис для управления целями пользователя
+    Данные сохраняются в SQLite БД!
     """
     
     def __init__(self, db=None, ai=None):
         self.db = db
         self.ai = ai
-        self.goals_storage = {}  # user_id -> List[Goal]
-        self.achievements = {}  # user_id -> List[Achievement]
+        # Кэш в памяти для быстрого доступа (заполняется из БД)
+        self.goals_cache = {}  # user_id -> List[Goal]
+        self.achievements_cache = {}  # user_id -> List[Achievement]
         
     async def create_goal(
         self,
@@ -51,9 +53,6 @@ class GoalsService:
         Returns:
             Словарь с данными цели
         """
-        if user_id not in self.goals_storage:
-            self.goals_storage[user_id] = []
-        
         # Автоматический дедлайн если не задан
         if deadline is None:
             ukraine_tz = pytz.timezone('Europe/Kiev')
@@ -69,7 +68,6 @@ class GoalsService:
                 deadline = (next_month - timedelta(days=next_month.day-1)).replace(hour=23, minute=59)
         
         goal = {
-            "id": len(self.goals_storage[user_id]) + 1,
             "title": title,
             "description": description,
             "type": goal_type,
@@ -82,11 +80,16 @@ class GoalsService:
             "last_updated": datetime.now(pytz.timezone('Europe/Kiev')).isoformat()
         }
         
-        self.goals_storage[user_id].append(goal)
-        
-        # Сохраняем в БД если доступна
+        # Сохраняем в БД
         if self.db:
-            await self._save_goal_to_db(user_id, goal)
+            goal_id = await self.db.save_goal(user_id, goal)
+            goal["id"] = goal_id
+        else:
+            # Fallback: локальное хранение
+            if user_id not in self.goals_cache:
+                self.goals_cache[user_id] = []
+            goal["id"] = len(self.goals_cache[user_id]) + 1
+            self.goals_cache[user_id].append(goal)
         
         return goal
     
@@ -109,7 +112,7 @@ class GoalsService:
         Returns:
             Обновленная цель или None
         """
-        goal = self._get_goal(user_id, goal_id)
+        goal = await self.get_goal(user_id, goal_id)
         if not goal:
             return None
         
@@ -136,7 +139,7 @@ class GoalsService:
         
         # Сохраняем в БД
         if self.db:
-            await self._save_goal_to_db(user_id, goal)
+            await self.db.save_goal(user_id, goal)
         
         return goal
     
@@ -151,10 +154,12 @@ class GoalsService:
         Returns:
             Список активных целей
         """
-        if user_id not in self.goals_storage:
-            return []
-        
-        goals = [g for g in self.goals_storage[user_id] if g["status"] == "active"]
+        # Получаем из БД
+        if self.db:
+            goals = await self.db.get_goals(user_id, status="active")
+        else:
+            goals = self.goals_cache.get(user_id, [])
+            goals = [g for g in goals if g["status"] == "active"]
         
         if goal_type:
             goals = [g for g in goals if g["type"] == goal_type]
@@ -166,14 +171,16 @@ class GoalsService:
     
     async def get_goal(self, user_id: int, goal_id: int) -> Optional[Dict]:
         """Получает цель по ID"""
+        if self.db:
+            return await self.db.get_goal(user_id, goal_id)
         return self._get_goal(user_id, goal_id)
     
     def _get_goal(self, user_id: int, goal_id: int) -> Optional[Dict]:
-        """Внутренний метод получения цели"""
-        if user_id not in self.goals_storage:
+        """Внутренний метод получения цели (из кэша)"""
+        if user_id not in self.goals_cache:
             return None
         
-        for goal in self.goals_storage[user_id]:
+        for goal in self.goals_cache[user_id]:
             if goal["id"] == goal_id:
                 return goal
         
@@ -181,7 +188,7 @@ class GoalsService:
     
     async def complete_goal(self, user_id: int, goal_id: int) -> Optional[Dict]:
         """Помечает цель как завершенную"""
-        goal = self._get_goal(user_id, goal_id)
+        goal = await self.get_goal(user_id, goal_id)
         if not goal:
             return None
         
@@ -192,15 +199,15 @@ class GoalsService:
         # Создаем достижение
         await self._create_achievement(user_id, goal)
         
-        # Сохраняем
+        # Сохраняем в БД
         if self.db:
-            await self._save_goal_to_db(user_id, goal)
+            await self.db.save_goal(user_id, goal)
         
         return goal
     
     async def pause_goal(self, user_id: int, goal_id: int) -> Optional[Dict]:
         """Ставит цель на паузу"""
-        goal = self._get_goal(user_id, goal_id)
+        goal = await self.get_goal(user_id, goal_id)
         if not goal:
             return None
         
@@ -208,13 +215,13 @@ class GoalsService:
         goal["last_updated"] = datetime.now(pytz.timezone('Europe/Kiev')).isoformat()
         
         if self.db:
-            await self._save_goal_to_db(user_id, goal)
+            await self.db.save_goal(user_id, goal)
         
         return goal
     
     async def resume_goal(self, user_id: int, goal_id: int) -> Optional[Dict]:
         """Возобновляет цель с паузы"""
-        goal = self._get_goal(user_id, goal_id)
+        goal = await self.get_goal(user_id, goal_id)
         if not goal:
             return None
         
@@ -223,23 +230,22 @@ class GoalsService:
             goal["last_updated"] = datetime.now(pytz.timezone('Europe/Kiev')).isoformat()
             
             if self.db:
-                await self._save_goal_to_db(user_id, goal)
+                await self.db.save_goal(user_id, goal)
         
         return goal
     
     async def delete_goal(self, user_id: int, goal_id: int) -> bool:
         """Удаляет цель"""
-        if user_id not in self.goals_storage:
+        if self.db:
+            return await self.db.delete_goal(user_id, goal_id)
+        
+        # Fallback: локальный кэш
+        if user_id not in self.goals_cache:
             return False
         
         goal = self._get_goal(user_id, goal_id)
         if goal:
-            self.goals_storage[user_id].remove(goal)
-            
-            # Удаляем из БД
-            if self.db:
-                await self._delete_goal_from_db(user_id, goal_id)
-            
+            self.goals_cache[user_id].remove(goal)
             return True
         
         return False
@@ -311,7 +317,15 @@ class GoalsService:
                 "current_streak": 3
             }
         """
-        if user_id not in self.goals_storage:
+        # Получаем все цели из БД
+        if self.db:
+            goals = await self.db.get_goals(user_id)
+            achievements = await self.db.get_achievements(user_id)
+        else:
+            goals = self.goals_cache.get(user_id, [])
+            achievements = self.achievements_cache.get(user_id, [])
+        
+        if not goals:
             return {
                 "total_goals": 0,
                 "active": 0,
@@ -323,8 +337,6 @@ class GoalsService:
                 "current_streak": 0
             }
         
-        goals = self.goals_storage[user_id]
-        
         active = len([g for g in goals if g["status"] == "active"])
         completed = len([g for g in goals if g["status"] == "completed"])
         failed = len([g for g in goals if g["status"] == "failed"])
@@ -333,7 +345,7 @@ class GoalsService:
         total = len(goals)
         completion_rate = completed / total if total > 0 else 0.0
         
-        achievements_count = len(self.achievements.get(user_id, []))
+        achievements_count = len(achievements)
         
         # Подсчет текущей серии (streak)
         current_streak = await self._calculate_streak(user_id)
@@ -396,19 +408,23 @@ class GoalsService:
     
     async def _create_achievement(self, user_id: int, goal: Dict):
         """Создает достижение за выполненную цель"""
-        if user_id not in self.achievements:
-            self.achievements[user_id] = []
-        
         achievement = {
-            "id": len(self.achievements[user_id]) + 1,
             "title": f"Выполнена цель: {goal['title']}",
             "description": goal.get("description", ""),
             "earned_at": datetime.now(pytz.timezone('Europe/Kiev')).isoformat(),
-            "goal_id": goal["id"],
+            "goal_id": goal.get("id"),
             "icon": self._get_achievement_icon(goal)
         }
         
-        self.achievements[user_id].append(achievement)
+        # Сохраняем в БД
+        if self.db:
+            await self.db.save_achievement(user_id, achievement)
+        else:
+            # Fallback: локальный кэш
+            if user_id not in self.achievements_cache:
+                self.achievements_cache[user_id] = []
+            achievement["id"] = len(self.achievements_cache[user_id]) + 1
+            self.achievements_cache[user_id].append(achievement)
     
     def _get_achievement_icon(self, goal: Dict) -> str:
         """Возвращает иконку достижения в зависимости от типа цели"""
@@ -422,7 +438,13 @@ class GoalsService:
     
     async def _calculate_streak(self, user_id: int) -> int:
         """Подсчитывает текущую серию выполненных целей"""
-        if user_id not in self.goals_storage:
+        # Получаем достижения из БД
+        if self.db:
+            achievements = await self.db.get_achievements(user_id)
+        else:
+            achievements = self.achievements_cache.get(user_id, [])
+        
+        if not achievements:
             return 0
         
         # Получаем завершенные цели, отсортированные по дате
@@ -451,16 +473,6 @@ class GoalsService:
                 break
         
         return streak
-    
-    async def _save_goal_to_db(self, user_id: int, goal: Dict):
-        """Сохраняет цель в БД (заглушка для будущей реализации)"""
-        # TODO: реализовать когда добавим таблицу goals
-        pass
-    
-    async def _delete_goal_from_db(self, user_id: int, goal_id: int):
-        """Удаляет цель из БД (заглушка)"""
-        # TODO: реализовать
-        pass
     
     async def smart_goal_suggestion(self, user_id: int, user_message: str) -> Optional[Dict]:
         """

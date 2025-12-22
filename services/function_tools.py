@@ -541,7 +541,8 @@ class FunctionExecutor:
             return "❌ ДТЕК сервис недоступен"
         
         # Проверяем настроен ли адрес
-        if not self.dtek.get_user_address(user_id):
+        address = await self.dtek.get_user_address(user_id)
+        if not address:
             return """⚠️ Адрес не настроен для проверки отключений.
 
 Скажи мне свой адрес, например:
@@ -585,7 +586,8 @@ class FunctionExecutor:
         if not self.dtek:
             return "❌ ДТЕК сервис недоступен"
         
-        if not self.dtek.get_user_address(user_id):
+        address = await self.dtek.get_user_address(user_id)
+        if not address:
             return "⚠️ Адрес не настроен. Скажи мне где ты живёшь."
         
         try:
@@ -623,7 +625,8 @@ class FunctionExecutor:
         if not self.dtek:
             return "❌ ДТЕК сервис недоступен"
         
-        if not self.dtek.get_user_address(user_id):
+        address = await self.dtek.get_user_address(user_id)
+        if not address:
             return "⚠️ Адрес не настроен. Скажи мне где ты живёшь."
         
         try:
@@ -678,8 +681,8 @@ class FunctionExecutor:
         if not street.startswith("вул."):
             street = f"вул. {street}"
         
-        # Сохраняем адрес
-        self.dtek.set_user_address(user_id, city, street, building, queue)
+        # Сохраняем адрес (асинхронно в БД)
+        await self.dtek.set_user_address(user_id, city, street, building, queue)
         
         response = f"""✅ **Адрес сохранен!**
 
@@ -702,7 +705,8 @@ class FunctionExecutor:
         if not self.dtek:
             return "❌ ДТЕК сервис недоступен"
         
-        if not self.dtek.get_user_address(user_id):
+        address = await self.dtek.get_user_address(user_id)
+        if not address:
             return "⚠️ Сначала нужно настроить адрес. Скажи мне где ты живёшь."
         
         # Проверяем не запущен ли уже

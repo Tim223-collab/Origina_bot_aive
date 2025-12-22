@@ -461,4 +461,240 @@ class Database:
             """, (user_id,)) as cursor:
                 rows = await cursor.fetchall()
                 return {row['content_type']: row['count'] for row in rows}
+    
+    # === GOALS (Цели) ===
+    
+    async def save_goal(self, user_id: int, goal: Dict[str, Any]) -> int:
+        """Сохраняет или обновляет цель"""
+        async with aiosqlite.connect(self.db_path) as db:
+            milestones_json = json.dumps(goal.get('milestones', []))
+            completed_milestones_json = json.dumps(goal.get('completed_milestones', []))
+            metadata_json = json.dumps(goal.get('metadata', {}))
+            
+            if goal.get('id'):
+                # Обновляем существующую цель
+                await db.execute("""
+                    UPDATE goals SET
+                        title = ?, description = ?, goal_type = ?, status = ?,
+                        progress = ?, deadline = ?, milestones = ?,
+                        completed_milestones = ?, metadata = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND user_id = ?
+                """, (
+                    goal['title'], goal.get('description'), goal['type'],
+                    goal['status'], goal['progress'], goal.get('deadline'),
+                    milestones_json, completed_milestones_json, metadata_json,
+                    goal['id'], user_id
+                ))
+                await db.commit()
+                return goal['id']
+            else:
+                # Создаём новую цель
+                cursor = await db.execute("""
+                    INSERT INTO goals (user_id, title, description, goal_type, status,
+                        progress, deadline, milestones, completed_milestones, metadata)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    user_id, goal['title'], goal.get('description'), goal['type'],
+                    goal['status'], goal['progress'], goal.get('deadline'),
+                    milestones_json, completed_milestones_json, metadata_json
+                ))
+                await db.commit()
+                return cursor.lastrowid
+    
+    async def get_goals(self, user_id: int, status: str = None) -> List[Dict[str, Any]]:
+        """Получает цели пользователя"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            
+            if status:
+                query = "SELECT * FROM goals WHERE user_id = ? AND status = ? ORDER BY created_at DESC"
+                params = (user_id, status)
+            else:
+                query = "SELECT * FROM goals WHERE user_id = ? ORDER BY created_at DESC"
+                params = (user_id,)
+            
+            async with db.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
+                goals = []
+                for row in rows:
+                    goal = dict(row)
+                    goal['milestones'] = json.loads(goal.get('milestones', '[]'))
+                    goal['completed_milestones'] = json.loads(goal.get('completed_milestones', '[]'))
+                    goal['metadata'] = json.loads(goal.get('metadata', '{}'))
+                    # Переименовываем goal_type в type для совместимости
+                    goal['type'] = goal.pop('goal_type', 'custom')
+                    goals.append(goal)
+                return goals
+    
+    async def get_goal(self, user_id: int, goal_id: int) -> Optional[Dict[str, Any]]:
+        """Получает одну цель по ID"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM goals WHERE id = ? AND user_id = ?",
+                (goal_id, user_id)
+            ) as cursor:
+                row = await cursor.fetchone()
+                if row:
+                    goal = dict(row)
+                    goal['milestones'] = json.loads(goal.get('milestones', '[]'))
+                    goal['completed_milestones'] = json.loads(goal.get('completed_milestones', '[]'))
+                    goal['metadata'] = json.loads(goal.get('metadata', '{}'))
+                    goal['type'] = goal.pop('goal_type', 'custom')
+                    return goal
+                return None
+    
+    async def delete_goal(self, user_id: int, goal_id: int) -> bool:
+        """Удаляет цель"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "DELETE FROM goals WHERE id = ? AND user_id = ?",
+                (goal_id, user_id)
+            )
+            await db.commit()
+            return True
+    
+    # === ACHIEVEMENTS (Достижения) ===
+    
+    async def save_achievement(self, user_id: int, achievement: Dict[str, Any]) -> int:
+        """Сохраняет достижение"""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("""
+                INSERT INTO achievements (user_id, goal_id, title, description, icon)
+                VALUES (?, ?, ?, ?, ?)
+            """, (
+                user_id,
+                achievement.get('goal_id'),
+                achievement['title'],
+                achievement.get('description'),
+                achievement.get('icon', '⭐')
+            ))
+            await db.commit()
+            return cursor.lastrowid
+    
+    async def get_achievements(self, user_id: int) -> List[Dict[str, Any]]:
+        """Получает достижения пользователя"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM achievements WHERE user_id = ? ORDER BY earned_at DESC",
+                (user_id,)
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+    
+    # === EMOTIONAL HISTORY (История эмоций) ===
+    
+    async def save_emotion(self, user_id: int, emotion_data: Dict[str, Any]) -> int:
+        """Сохраняет эмоциональную запись"""
+        async with aiosqlite.connect(self.db_path) as db:
+            keywords_json = json.dumps(emotion_data.get('keywords_found', []))
+            
+            cursor = await db.execute("""
+                INSERT INTO emotional_history 
+                (user_id, message_preview, emotion, intensity, confidence, keywords)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                user_id,
+                emotion_data.get('message_preview', '')[:100],
+                emotion_data['emotion'],
+                emotion_data.get('intensity', 0.5),
+                emotion_data.get('confidence', 0.5),
+                keywords_json
+            ))
+            await db.commit()
+            return cursor.lastrowid
+    
+    async def get_emotion_history(
+        self, 
+        user_id: int, 
+        limit: int = 100,
+        hours: int = None
+    ) -> List[Dict[str, Any]]:
+        """Получает историю эмоций"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            
+            if hours:
+                query = """
+                    SELECT * FROM emotional_history 
+                    WHERE user_id = ? AND created_at > datetime('now', ?)
+                    ORDER BY created_at DESC LIMIT ?
+                """
+                params = (user_id, f'-{hours} hours', limit)
+            else:
+                query = """
+                    SELECT * FROM emotional_history 
+                    WHERE user_id = ?
+                    ORDER BY created_at DESC LIMIT ?
+                """
+                params = (user_id, limit)
+            
+            async with db.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
+                result = []
+                for row in rows:
+                    item = dict(row)
+                    item['keywords'] = json.loads(item.get('keywords', '[]'))
+                    result.append(item)
+                return result
+    
+    # === DTEK ADDRESSES (Адреса ДТЕК) ===
+    
+    async def save_dtek_address(
+        self, 
+        user_id: int, 
+        city: str, 
+        street: str, 
+        building: str, 
+        queue: str = None
+    ) -> int:
+        """Сохраняет или обновляет адрес ДТЕК"""
+        async with aiosqlite.connect(self.db_path) as db:
+            # Используем INSERT OR REPLACE для upsert
+            cursor = await db.execute("""
+                INSERT INTO dtek_addresses (user_id, city, street, building, queue)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    city = excluded.city,
+                    street = excluded.street,
+                    building = excluded.building,
+                    queue = excluded.queue,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (user_id, city, street, building, queue))
+            await db.commit()
+            return cursor.lastrowid
+    
+    async def get_dtek_address(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """Получает адрес ДТЕК пользователя"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM dtek_addresses WHERE user_id = ?",
+                (user_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+    
+    async def set_dtek_monitoring(self, user_id: int, enabled: bool) -> bool:
+        """Включает/выключает мониторинг ДТЕК"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                UPDATE dtek_addresses 
+                SET monitoring_enabled = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = ?
+            """, (1 if enabled else 0, user_id))
+            await db.commit()
+            return True
+    
+    async def get_users_with_dtek_monitoring(self) -> List[Dict[str, Any]]:
+        """Получает всех пользователей с включённым мониторингом ДТЕК"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM dtek_addresses WHERE monitoring_enabled = 1"
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
 

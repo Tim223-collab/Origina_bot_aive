@@ -14,7 +14,8 @@ import config
 
 class AIHandler:
     def __init__(self, db: Database, ai: AIService, memory: MemoryService, 
-                 extras_service=None, parser_service=None, agent_service=None, personality_service=None):
+                 extras_service=None, parser_service=None, agent_service=None, 
+                 personality_service=None, function_executor=None):
         self.db = db
         self.ai = ai
         self.memory = memory
@@ -24,13 +25,19 @@ class AIHandler:
         # Сохраняем ссылку на бота для ДТЕК мониторинга
         self.bot_context = None
         
-        # Function executor для выполнения функций
-        self.function_executor = FunctionExecutor(
-            db=db,
-            memory_service=memory,
-            extras_service=extras_service,
-            parser_service=parser_service
-        )
+        # Function executor для выполнения функций (передаётся из main.py)
+        # Это гарантирует что все сервисы (включая ДТЕК) будут доступны
+        if function_executor:
+            self.function_executor = function_executor
+        else:
+            # Fallback: создаём локальный (без ДТЕК)
+            self.function_executor = FunctionExecutor(
+                db=db,
+                memory_service=memory,
+                extras_service=extras_service,
+                parser_service=parser_service,
+                dtek_service=None
+            )
     
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
